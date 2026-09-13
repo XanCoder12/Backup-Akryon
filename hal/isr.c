@@ -1,6 +1,7 @@
 #include "isr.h"
 #include "vga.h"
 #include "io.h"
+#include "serial.h"
 
 static isr_t interrupt_handlers[256] = {0};
 
@@ -52,34 +53,56 @@ void isr_handler(registers_t* regs) {
 
     vga_set_color(VGA_COLOR_WHITE, VGA_COLOR_RED);
     vga_puts("\n[CPU EXCEPTION PANIC]\n");
+    serial_puts("\n[CPU EXCEPTION PANIC]\nException: ");
     vga_puts("Exception: ");
     if (regs->int_no < 32) {
         vga_puts(exception_messages[regs->int_no]);
+        serial_puts(exception_messages[regs->int_no]);
     } else {
         vga_puts("Unknown Interrupt");
+        serial_puts("Unknown Interrupt");
     }
     vga_puts(" (Vector: ");
+    serial_puts(" (Vector: ");
     vga_putdec(regs->int_no);
+    serial_putdec(regs->int_no);
     vga_puts(", ErrCode: ");
+    serial_puts(", ErrCode: ");
     vga_puthex(regs->err_code);
+    serial_puthex(regs->err_code);
     vga_puts(")\n");
+    serial_puts(")\n");
 
     vga_puts("EIP: "); vga_puthex(regs->eip);
+    serial_puts("EIP: "); serial_puthex(regs->eip);
     vga_puts(" CS: ");  vga_puthex(regs->cs);
+    serial_puts(" CS: ");  serial_puthex(regs->cs);
     vga_puts(" EFLAGS: "); vga_puthex(regs->eflags);
+    serial_puts(" EFLAGS: "); serial_puthex(regs->eflags);
     vga_puts("\n");
+    serial_puts("\n");
 
     vga_puts("EAX: "); vga_puthex(regs->eax);
+    serial_puts("EAX: "); serial_puthex(regs->eax);
     vga_puts(" EBX: "); vga_puthex(regs->ebx);
+    serial_puts(" EBX: "); serial_puthex(regs->ebx);
     vga_puts(" ECX: "); vga_puthex(regs->ecx);
+    serial_puts(" ECX: "); serial_puthex(regs->ecx);
     vga_puts(" EDX: "); vga_puthex(regs->edx);
+    serial_puts(" EDX: "); serial_puthex(regs->edx);
     vga_puts("\n");
+    serial_puts("\n");
 
     vga_puts("ESP: "); vga_puthex(regs->esp);
+    serial_puts("ESP: "); serial_puthex(regs->esp);
     vga_puts(" EBP: "); vga_puthex(regs->ebp);
+    serial_puts(" EBP: "); serial_puthex(regs->ebp);
     vga_puts(" ESI: "); vga_puthex(regs->esi);
+    serial_puts(" ESI: "); serial_puthex(regs->esi);
     vga_puts(" EDI: "); vga_puthex(regs->edi);
+    serial_puts(" EDI: "); serial_puthex(regs->edi);
     vga_puts("\nSystem halted. Please reset.\n");
+    serial_puts("\nSystem halted. Please reset.\n");
 
     cli();
     while (1) {
