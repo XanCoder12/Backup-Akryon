@@ -44,14 +44,35 @@ pub struct PageDirectory {
     pub entries: [u32; ENTRIES_PER_TABLE],
 }
 
-// Static Page Directory and Identity Page Tables in kernel BSS (reserved by PMM)
-static mut PAGE_DIRECTORY: PageDirectory = PageDirectory {
-    entries: [0; ENTRIES_PER_TABLE],
-};
+// Page Directory and Page Tables located in extended memory (1 MB+ safe DRAM)
+pub const PAGE_DIR_PHYS: usize     = 0x00100000; // 4 KB Page Directory
+pub const LFB_TABLE_PHYS: usize    = 0x00101000; // 4 KB LFB Page Table
+pub const IDENT_TABLES_PHYS: usize = 0x00110000; // 64 KB (16 Page Tables)
 
-static mut IDENTITY_TABLES: [PageTable; NUM_IDENTITY_TABLES] = [
-    PageTable { entries: [0; ENTRIES_PER_TABLE] }; NUM_IDENTITY_TABLES
-];
+#[inline]
+pub unsafe fn get_page_directory() -> &'static mut PageDirectory {
+    &mut *(PAGE_DIR_PHYS as *mut PageDirectory)
+}
+
+extern "C" {
+    fn fb_is_active() -> u8;
+    fn fb_get_info() -> *const BootInfoVmm;
+}
+
+#[repr(C)]
+struct BootInfoVmm {
+    magic: u32,
+    fb_addr: u32,
+    fb_width: u16,
+    fb_height: u16,
+    fb_pitch: u16,
+    fb_bpp: u8,
+    is_graphical: u8,
+    reserved: [u8; 2],
+}
+
+// LFB fallback is 0xFD000000 (PD index 1012).
+pub const LFB_PHYS_BASE: usize = 0xFD000000;
 
 static mut PAGING_ENABLED: bool = false;
 static mut DEMAND_PAGE_FAULTS: usize = 0;
@@ -111,26 +132,51 @@ pub fn init() {
     crate::logln!("[VMM] Initializing Virtual Memory Manager (Two-level x86 Paging)...");
 
     unsafe {
+        // Zero out the page directory, identity tables, and LFB table in extended memory
+        core::ptr::write_bytes(PAGE_DIR_PHYS as *mut u8, 0, PAGE_SIZE);
+        core::ptr::write_bytes(LFB_TABLE_PHYS as *mut u8, 0, PAGE_SIZE);
+        core::ptr::write_bytes(IDENT_TABLES_PHYS as *mut u8, 0, NUM_IDENTITY_TABLES * PAGE_SIZE);
+
+        let pd = get_page_directory();
+        let ident_tables = &mut *(IDENT_TABLES_PHYS as *mut [PageTable; NUM_IDENTITY_TABLES]);
+        let lfb_table = &mut *(LFB_TABLE_PHYS as *mut PageTable);
+
         // 1. Identity map the first 64 MB of physical memory
-        // Covers: BIOS/IVT (0x0..0x100000), VGA buffer (0xB8000), Kernel text/data/bss,
-        // kernel stack, 4MB kernel heap, and physical memory frames.
         for t in 0..NUM_IDENTITY_TABLES {
             let base_phys = t * ENTRIES_PER_TABLE * PAGE_SIZE;
             for i in 0..ENTRIES_PER_TABLE {
                 let page_phys = base_phys + (i * PAGE_SIZE);
-                IDENTITY_TABLES[t].entries[i] = (page_phys as u32) | PAGE_PRESENT | PAGE_WRITABLE;
+                ident_tables[t].entries[i] = (page_phys as u32) | PAGE_PRESENT | PAGE_WRITABLE;
             }
 
-            // Link Page Directory entry t to IDENTITY_TABLES[t]
-            let table_phys = core::ptr::addr_of!(IDENTITY_TABLES[t]) as usize;
-            PAGE_DIRECTORY.entries[t] = (table_phys as u32) | PAGE_PRESENT | PAGE_WRITABLE;
+            // Link Page Directory entry t to IDENT_TABLES[t]
+            let table_phys = IDENT_TABLES_PHYS + (t * PAGE_SIZE);
+            pd.entries[t] = (table_phys as u32) | PAGE_PRESENT | PAGE_WRITABLE;
         }
 
         TOTAL_MAPPED_PAGES = NUM_IDENTITY_TABLES * ENTRIES_PER_TABLE;
 
+        // Map the VBE LFB (4MB slot at physical fb_addr).
+        let lfb_phys = if fb_is_active() != 0 {
+            let info = &*fb_get_info();
+            (info.fb_addr as usize) & !0x3FFFFF // 4MB aligned boundary
+        } else {
+            LFB_PHYS_BASE
+        };
+        let lfb_pd_idx = (lfb_phys >> 22) & 0x3FF;
+
+        for i in 0..ENTRIES_PER_TABLE {
+            let page_phys = lfb_phys + i * PAGE_SIZE;
+            lfb_table.entries[i] = (page_phys as u32) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_NOCACHE;
+        }
+        pd.entries[lfb_pd_idx] = (LFB_TABLE_PHYS as u32) | PAGE_PRESENT | PAGE_WRITABLE;
+        TOTAL_MAPPED_PAGES += ENTRIES_PER_TABLE;
+
         // Clear remaining directory entries (unmapped / not present)
         for t in NUM_IDENTITY_TABLES..ENTRIES_PER_TABLE {
-            PAGE_DIRECTORY.entries[t] = 0;
+            if t != lfb_pd_idx {
+                pd.entries[t] = 0;
+            }
         }
 
         // 2. Register ISR 14 (Page Fault Exception Handler)
@@ -138,9 +184,8 @@ pub fn init() {
         crate::logln!("[VMM] ISR 14 Page Fault Exception Handler registered.");
 
         // 3. Load CR3 with Page Directory physical address
-        let pd_phys = core::ptr::addr_of!(PAGE_DIRECTORY) as usize;
-        load_cr3(pd_phys);
-        crate::logln!("[VMM] Page Directory loaded into CR3 at 0x{:08X}", pd_phys);
+        load_cr3(PAGE_DIR_PHYS);
+        crate::logln!("[VMM] Page Directory loaded into CR3 at 0x{:08X}", PAGE_DIR_PHYS);
 
         // 4. Enable Paging (PG bit 31) and Write Protect (WP bit 16) in CR0
         let mut cr0: u32;
@@ -165,7 +210,8 @@ pub fn map_page(virt_addr: usize, phys_addr: usize, flags: u32) -> Result<(), &'
         let pd_idx = (virt_addr >> 22) & 0x3FF;
         let pt_idx = (virt_addr >> 12) & 0x3FF;
 
-        let pde = PAGE_DIRECTORY.entries[pd_idx];
+        let pd = get_page_directory();
+        let pde = pd.entries[pd_idx];
         let pt_phys = if (pde & PAGE_PRESENT) == 0 {
             // Allocate a new frame from PMM for the Page Table
             let new_table_frame = match crate::pmm::alloc_frame() {
@@ -178,7 +224,7 @@ pub fn map_page(virt_addr: usize, phys_addr: usize, flags: u32) -> Result<(), &'
 
             // Set PDE
             let pde_val = (new_table_frame as u32) | PAGE_PRESENT | PAGE_WRITABLE | (flags & PAGE_USER);
-            PAGE_DIRECTORY.entries[pd_idx] = pde_val;
+            pd.entries[pd_idx] = pde_val;
             new_table_frame
         } else {
             (pde & PAGE_FRAME_MASK) as usize
@@ -203,7 +249,8 @@ pub fn unmap_page(virt_addr: usize) -> Result<(), &'static str> {
         let pd_idx = (virt_addr >> 22) & 0x3FF;
         let pt_idx = (virt_addr >> 12) & 0x3FF;
 
-        let pde = PAGE_DIRECTORY.entries[pd_idx];
+        let pd = get_page_directory();
+        let pde = pd.entries[pd_idx];
         if (pde & PAGE_PRESENT) == 0 {
             return Err("Page table not present");
         }
@@ -230,7 +277,8 @@ pub fn get_phys_addr(virt_addr: usize) -> Option<usize> {
         let pt_idx = (virt_addr >> 12) & 0x3FF;
         let offset = virt_addr & (PAGE_SIZE - 1);
 
-        let pde = PAGE_DIRECTORY.entries[pd_idx];
+        let pd = get_page_directory();
+        let pde = pd.entries[pd_idx];
         if (pde & PAGE_PRESENT) == 0 {
             return None;
         }
