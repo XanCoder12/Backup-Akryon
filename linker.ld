@@ -33,9 +33,11 @@ SECTIONS
 
     .bss : ALIGN(4K)
     {
+        bss_start = .;
         *(COMMON)
         *(.bss)
         *(.bss.*)
+        bss_end = .;
     }
 
     . = ALIGN(4K);
