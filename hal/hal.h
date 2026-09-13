@@ -12,7 +12,8 @@
 #include "pci.h"
 #include "rtl8139.h"
 #include "rtc.h"
+#include "fb.h"
 
-void hal_init(void);
+void hal_init(boot_info_t* info);
 
 #endif // AKRYON_HAL_H
