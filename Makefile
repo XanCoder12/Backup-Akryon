@@ -33,7 +33,8 @@ C_FLAGS    := -m32 -mno-sse -mno-mmx -mno-sse2 -ffreestanding -fno-pie \
               -Wall -Wextra -O2 -I$(HAL_DIR) -c
 RUST_TARGET:= i686-unknown-linux-gnu
 RUST_FLAGS := --target $(RUST_TARGET) --crate-type staticlib -C panic=abort \
-              -C relocation-model=static -C opt-level=2
+              -C relocation-model=static -C opt-level=2 \
+              -C target-feature=-sse,-sse2,-sse4.1,-sse4.2,-avx
 LD_FLAGS   := -m elf_i386 -T linker.ld -nostdlib
 
 # C Objects
@@ -49,6 +50,7 @@ C_OBJS := $(BUILD_DIR)/string.o \
           $(BUILD_DIR)/pci.o \
           $(BUILD_DIR)/rtl8139.o \
           $(BUILD_DIR)/rtc.o \
+          $(BUILD_DIR)/fb.o \
           $(BUILD_DIR)/kmain.o
 
 # Rust Source Files
@@ -105,12 +107,15 @@ $(BUILD_DIR)/rtl8139.o: $(HAL_DIR)/rtl8139.c $(HAL_DIR)/rtl8139.h $(HAL_DIR)/pci
 $(BUILD_DIR)/rtc.o: $(HAL_DIR)/rtc.c $(HAL_DIR)/rtc.h $(HAL_DIR)/io.h | $(BUILD_DIR)
 	$(CC) $(C_FLAGS) $< -o $@
 
+$(BUILD_DIR)/fb.o: $(HAL_DIR)/fb.c $(HAL_DIR)/fb.h $(HAL_DIR)/serial.h $(HAL_DIR)/types.h | $(BUILD_DIR)
+	$(CC) $(C_FLAGS) $< -o $@
+
 # 4. Build C Kernel Main
 $(BUILD_DIR)/kmain.o: $(KERN_DIR)/kmain.c $(HAL_DIR)/hal.h | $(BUILD_DIR)
 	$(CC) $(C_FLAGS) $< -o $@
 
 # 5. Build Rust Static Library
-$(RUST_LIB): $(RUST_SRCS) $(RUST_DIR)/Cargo.toml | $(BUILD_DIR)
+$(RUST_LIB): $(RUST_SRCS) $(RUST_DIR)/Cargo.toml Makefile | $(BUILD_DIR)
 	$(RUSTC) $(RUST_FLAGS) $(RUST_DIR)/src/lib.rs -o $@
 
 # 6. Link Assembly, C HAL, and Rust staticlib into Kernel ELF
@@ -128,14 +133,15 @@ $(OS_IMAGE): $(BOOT_BIN) $(KERNEL_BIN)
 	@echo "\n>>> Akryon OS Image successfully built: $(OS_IMAGE) (1.44 MB) <<<\n"
 
 QEMU_NET := -netdev user,id=net0 -device rtl8139,netdev=net0
+QEMU_VGA := -vga std
 
 # Run in QEMU (GUI)
 run: $(OS_IMAGE)
-	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw $(QEMU_NET)
+	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw $(QEMU_VGA) $(QEMU_NET)
 
 # Run in QEMU with Serial output directed to terminal stdio
 run-serial: $(OS_IMAGE)
-	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw -serial stdio $(QEMU_NET)
+	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw $(QEMU_VGA) -serial stdio $(QEMU_NET)
 
 # Run in QEMU with Curses text console mode
 run-curses: $(OS_IMAGE)

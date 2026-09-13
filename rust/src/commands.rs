@@ -63,6 +63,7 @@ pub fn handle_command(cmd: &str) {
         "vmm"      => cmd_vmm(args),
         "panic"    => cmd_panic(args),
         "reboot"   => cmd_reboot(),
+        "lalaufetch" => cmd_lalaufetch(),
         _ => {
             print_colored!(Color::LightRed, Color::Black, "Error: ");
             println!("Unknown command '{}'. Type 'help' for available commands.", command);
@@ -101,6 +102,7 @@ fn cmd_help() {
     println!("  nc [-u] <ip> <p>  - Send raw network payload via Netcat");
     println!("  panic [msg]       - Trigger Rust Kernel Panic");
     println!("  reboot            - Restart the computer");
+    println!("  lalaufetch        - Neofetch-style system info with galaxy logo");
 }
 
 fn cmd_ls() {
@@ -241,6 +243,161 @@ fn cmd_about() {
     println!("Kernel Core  : Rust (no_std, alloc, physical memory & heap)");
     println!("HAL Drivers  : C / Assembly (GDT, IDT, PIC, PIT, PS/2, UART)");
     println!("Target Model : Unix-like OS with POSIX roadmap");
+}
+
+// ─── lalaufetch ───────────────────────────────────────────────────────────────
+// Neofetch-style system info display with galaxy braille logo.
+// TrueColor on VBE framebuffer; degrades gracefully to VGA 16-color.
+fn cmd_lalaufetch() {
+    use crate::framebuffer::{self, palette};
+
+    vga::clear_screen();
+
+    let logo: &[&str] = &[
+        "                       ....oooooooooo..",
+        "                     ..ooo@@@@@@@@@@@@@@oo.",
+        "                   ..oo@@@@@oooooo@@@@@@@@@ooo......oooo.......",
+        "                  .ooo@@@@o.       .o@@@@@@@@@@@@@@@@ooo...",
+        "                 oooo@@@@.           o@@@@@@@@@@oo...",
+        "               ..oo@@@@@o      ..ooo@@@@ooo...",
+        "             .ooo@@@@@@@@@@oo@@@@ooo...ooo.",
+        "         ..oo@@@@@@@@@@@@oooo...       o@@oo.",
+        "    ...oo@@@@@@oooo...  .@@@o.     .o@@@oo.",
+        " ..........            .o@@@@@@@@@@@@@@@o..",
+        "                         ..oo@@@@@oo..",
+    ];
+
+    // On TrueColor LFB: paint each logo line with a horizontal neon gradient
+    // cycling from deep-space blue → galaxy cyan → mauve.
+    let grad_stops: &[(u32, u32)] = &[
+        (palette::BLUE,    palette::SKY),
+        (palette::SKY,     palette::TEAL),
+        (palette::TEAL,    palette::MAUVE),
+        (palette::MAUVE,   palette::LAVENDER),
+        (palette::LAVENDER,palette::BLUE),
+        (palette::BLUE,    palette::SKY),
+        (palette::SKY,     palette::TEAL),
+        (palette::TEAL,    palette::MAUVE),
+        (palette::MAUVE,   palette::LAVENDER),
+        (palette::LAVENDER,palette::BLUE),
+        (palette::BLUE,    palette::SKY),
+    ];
+
+    for (i, line) in logo.iter().enumerate() {
+        if framebuffer::is_active() {
+            let (c_l, _c_r) = grad_stops[i % grad_stops.len()];
+            let (_cx, cy) = vga::get_cursor();
+            // draw gradient background strip for this line
+            framebuffer::draw_banner_bg(cy, palette::BASE, palette::MANTLE);
+            framebuffer::set_color(c_l, palette::BASE);
+            crate::print!("{}\n", line);
+            // restore default fg
+            framebuffer::set_color(palette::TEXT, palette::BASE);
+        } else {
+            print_colored!(Color::LightCyan, Color::Black, "{}\n", line);
+        }
+    }
+
+    println!("");
+
+    // ── Header ───────────────────────────────────────────────────────────────
+    if framebuffer::is_active() {
+        framebuffer::set_color(palette::YELLOW, palette::BASE);
+        crate::print!("  akryon");
+        framebuffer::set_color(palette::RED, palette::BASE);
+        crate::print!("@");
+        framebuffer::set_color(palette::PEACH, palette::BASE);
+        crate::print!("AkryonOS\n");
+        framebuffer::set_color(palette::SURFACE1, palette::BASE);
+        crate::print!("  ----------------------------------------\n");
+        framebuffer::set_color(palette::TEXT, palette::BASE);
+    } else {
+        print_colored!(Color::Yellow, Color::Black, "  akryon");
+        print_colored!(Color::LightRed, Color::Black, "@");
+        print_colored!(Color::Yellow, Color::Black, "AkryonOS\n");
+        println!("  ----------------------------------------");
+    }
+
+    // ── System info lines ────────────────────────────────────────────────────
+    let uptime_sec = unsafe { timer_get_uptime_seconds() };
+    let minutes = uptime_sec / 60;
+    let seconds = uptime_sec % 60;
+    let total_kb = crate::pmm::total_memory() / 1024;
+    let used_kb  = crate::pmm::used_memory() / 1024;
+    let free_kb  = crate::pmm::free_memory() / 1024;
+    let display_mode = if framebuffer::is_active() {
+        "VBE 1024x768 32bpp TrueColor LFB"
+    } else {
+        "VGA 80x25 text mode"
+    };
+
+    macro_rules! lf_line {
+        ($label:expr, $val_color:expr, $fmt:literal $($arg:tt)*) => {{
+            if framebuffer::is_active() {
+                crate::print!("  ");
+                framebuffer::set_color(palette::MAUVE, palette::BASE);
+                crate::print!("{:<12}", $label);
+                framebuffer::set_color(palette::SURFACE1, palette::BASE);
+                crate::print!(" | ");
+                framebuffer::set_color($val_color, palette::BASE);
+                crate::print!($fmt $($arg)*);
+                framebuffer::set_color(palette::TEXT, palette::BASE);
+                crate::print!("\n");
+            } else {
+                print!("  ");
+                print_colored!(Color::LightMagenta, Color::Black, "{:<12}", $label);
+                print_colored!(Color::LightRed, Color::Black, " | ");
+                print_colored!(Color::White, Color::Black, $fmt $($arg)*);
+                println!("");
+            }
+        }};
+    }
+
+    lf_line!("os",      palette::TEXT,     "Akryon OS");
+    lf_line!("arch",    palette::TEXT,     "x86 (i686) 32-bit Protected Mode");
+    lf_line!("kernel",  palette::GREEN,    "Rust + C Hybrid Kernel");
+    lf_line!("hal",     palette::GREEN,    "C / ASM  (GDT IDT PIC PIT PS/2 UART)");
+    lf_line!("uptime",  palette::GREEN,    "{}m {}s", minutes, seconds);
+    lf_line!("memory",  palette::SKY,      "{} KB used / {} KB total  ({} KB free)", used_kb, total_kb, free_kb);
+    lf_line!("shell",   palette::TEAL,     "AkryonSH");
+    lf_line!("display", palette::TEAL,     "{}", display_mode);
+    lf_line!("network", palette::SAPPHIRE, "RTL8139 (QEMU virtio-compat)");
+    lf_line!("serial",  palette::SAPPHIRE, "COM1 @ 38400 baud  (0x3F8)");
+    lf_line!("paging",  palette::YELLOW,   "{}", if crate::vmm::is_paging_enabled() { "Enabled (CR0.PG=1 CR0.WP=1)" } else { "Disabled" });
+
+    if framebuffer::is_active() {
+        framebuffer::set_color(palette::SURFACE1, palette::BASE);
+        crate::print!("  =====================================\n");
+        framebuffer::set_color(palette::TEXT, palette::BASE);
+    } else {
+        println!("  ----------------------------------------");
+    }
+
+    // ── Color palette swatches ───────────────────────────────────────────────
+    print!("  ");
+    for c in 0u8..8u8 {
+        vga::set_color(Color::Black, Color::from_u8(c));
+        print!("   ");
+    }
+    vga::set_color(Color::White, Color::Black);
+    println!("");
+    print!("  ");
+    for c in 8u8..16u8 {
+        vga::set_color(Color::Black, Color::from_u8(c));
+        print!("   ");
+    }
+    vga::set_color(Color::White, Color::Black);
+    println!("");
+
+    println!("");
+    if framebuffer::is_active() {
+        framebuffer::set_color(palette::OVERLAY, palette::BASE);
+        crate::print!("  lalaufetch v1.1.0  --  galaxy explorer edition  [TrueColor LFB]\n");
+        framebuffer::set_color(palette::TEXT, palette::BASE);
+    } else {
+        print_colored!(Color::DarkGray, Color::Black, "  lalaufetch v1.1.0  --  galaxy explorer edition\n");
+    }
+    println!("");
 }
 
 fn cmd_sysinfo() {
