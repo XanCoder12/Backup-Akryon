@@ -3,15 +3,18 @@
 // Rust entry point declaration
 extern void akryon_rust_main(void);
 
-void hal_init(void) {
+void hal_init(boot_info_t* boot_info) {
     // 1. Initialize Global Descriptor Table
     gdt_init();
 
     // 2. Initialize Interrupt Descriptor Table & Remap PIC 8259
     idt_init();
 
-    // 3. Initialize VGA text mode console
-    vga_init();
+    // 3. Initialize Framebuffer or fallback to VGA text mode
+    fb_init(boot_info);
+    if (!fb_is_active()) {
+        vga_init();
+    }
 
     // 4. Initialize Serial Port COM1 (38400 baud) for debug logging
     serial_init();
@@ -38,14 +41,20 @@ void hal_init(void) {
     serial_puts("[Akryon Kernel] Hardware interrupts enabled (STI).\n");
 }
 
-void kmain(void) {
+void kmain(boot_info_t* boot_info) {
     // Inisialisasi Hardware Abstraction Layer
-    hal_init();
+    hal_init(boot_info);
 
     serial_puts("[Akryon Kernel] HAL initialization complete. Handing over to Rust Kernel Core...\n");
 
-    // Masuk ke Rust Kernel Core & Shell
-    akryon_rust_main();
+    // Masuk ke Rust Kernel Core & Shell dengan stack yang selaras 16-byte (System V ABI)
+    __asm__ volatile (
+        "movl $0x00140000, %%esp\n\t"
+        "andl $0xFFFFFFF0, %%esp\n\t"
+        "subl $12, %%esp\n\t"
+        "call akryon_rust_main\n\t"
+        : : : "memory"
+    );
 
     // Jika shell Rust selesai/keluar, masuk ke mode idle CPU halt
     serial_puts("[Akryon Kernel] Rust main returned. System entering idle state.\n");
