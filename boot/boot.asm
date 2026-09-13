@@ -7,7 +7,7 @@
 [ORG 0x7C00]
 
 KERNEL_START_SEG equ 0x1000      ; 0x1000:0x0000 -> Physical 0x10000 (64 KB)
-TOTAL_SECTORS    equ 800         ; Total sektor kernel (400 KB)
+TOTAL_SECTORS    equ 900         ; Total sektor kernel (~450 KB, fits below EBDA/VGA)
 CHUNK_SECTORS    equ 64          ; Baca dalam chunk 64 sektor (32 KB) per int 0x13
 
 start:
@@ -27,6 +27,9 @@ start:
 
     ; Muat kernel menggunakan LBA chunk loader
     call load_kernel_chunks
+
+    ; Aktifkan VBE Graphics Mode (1024x768x32 LFB)
+    call init_vbe
 
     ; Aktifkan A20 Gate
     call enable_a20
@@ -113,6 +116,70 @@ load_kernel_chunks:
     jmp $
 
 .load_done:
+    popa
+    ret
+
+; ------------------------------------------------------------------------------
+; VBE Linear Framebuffer Setup
+; ------------------------------------------------------------------------------
+BOOT_INFO_ADDR equ 0x9000
+
+init_vbe:
+    pusha
+    mov dword [BOOT_INFO_ADDR], 0
+    mov byte [BOOT_INFO_ADDR + 15], 0
+
+    mov cx, 0x144               ; 1024x768x32
+    call .try_mode
+    jnc .done
+
+    mov cx, 0x118               ; 1024x768x24/32
+    call .try_mode
+    jnc .done
+
+    mov cx, 0x115               ; 800x600x24/32
+    call .try_mode
+    jnc .done
+    jmp .done
+
+.try_mode:
+    mov ax, 0x4F01
+    mov di, 0x7E00
+    int 0x10
+    cmp ax, 0x004F
+    jne .fail
+
+    test byte [0x7E00], 0x80    ; LFB supported?
+    jz .fail
+
+    mov bx, cx
+    or bx, 0x4000               ; Bit 14: Linear Frame Buffer
+    mov ax, 0x4F02
+    int 0x10
+    cmp ax, 0x004F
+    jne .fail
+
+    ; Save BootInfo at 0x9000
+    mov dword [BOOT_INFO_ADDR], 0x414B5259
+    mov eax, [0x7E00 + 40]      ; PhysBasePtr
+    mov [BOOT_INFO_ADDR + 4], eax
+    mov ax, [0x7E00 + 18]       ; XResolution
+    mov [BOOT_INFO_ADDR + 8], ax
+    mov ax, [0x7E00 + 20]       ; YResolution
+    mov [BOOT_INFO_ADDR + 10], ax
+    mov ax, [0x7E00 + 16]       ; BytesPerScanLine
+    mov [BOOT_INFO_ADDR + 12], ax
+    mov al, [0x7E00 + 25]       ; BitsPerPixel
+    mov [BOOT_INFO_ADDR + 14], al
+    mov byte [BOOT_INFO_ADDR + 15], 1
+    clc
+    ret
+
+.fail:
+    stc
+    ret
+
+.done:
     popa
     ret
 
