@@ -1,4 +1,5 @@
 use core::fmt::{self, Write};
+use crate::framebuffer;
 
 extern "C" {
     fn vga_putchar(c: u8);
@@ -9,7 +10,6 @@ extern "C" {
     fn vga_set_cursor(x: usize, y: usize);
     fn vga_get_cursor(x: *mut usize, y: *mut usize);
 }
-
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,26 +35,33 @@ pub enum Color {
 impl Color {
     pub fn from_u8(val: u8) -> Self {
         match val {
-            0 => Color::Black,
-            1 => Color::Blue,
-            2 => Color::Green,
-            3 => Color::Cyan,
-            4 => Color::Red,
-            5 => Color::Magenta,
-            6 => Color::Brown,
-            7 => Color::LightGray,
-            8 => Color::DarkGray,
-            9 => Color::LightBlue,
+            0  => Color::Black,
+            1  => Color::Blue,
+            2  => Color::Green,
+            3  => Color::Cyan,
+            4  => Color::Red,
+            5  => Color::Magenta,
+            6  => Color::Brown,
+            7  => Color::LightGray,
+            8  => Color::DarkGray,
+            9  => Color::LightBlue,
             10 => Color::LightGreen,
             11 => Color::LightCyan,
             12 => Color::LightRed,
             13 => Color::LightMagenta,
             14 => Color::Yellow,
             15 => Color::White,
-            _ => Color::White,
+            _  => Color::White,
         }
     }
+
+    /// Map a 4-bit VGA color to its Catppuccin TrueColor equivalent.
+    pub fn to_rgb(self) -> u32 {
+        framebuffer::COLOR_TABLE[self as usize]
+    }
 }
+
+// ── Writer (dispatches to FB or VGA text mode) ───────────────────────────────
 
 pub struct VgaWriter;
 
@@ -62,64 +69,78 @@ impl Write for VgaWriter {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.bytes() {
             if byte == b'\n' {
-                unsafe {
-                    serial_putchar(b'\r');
-                }
+                unsafe { serial_putchar(b'\r'); }
             }
-            unsafe {
-                vga_putchar(byte);
-                serial_putchar(byte);
+            if framebuffer::is_active() {
+                framebuffer::putchar(byte);
+            } else {
+                unsafe { vga_putchar(byte); }
             }
+            unsafe { serial_putchar(byte); }
         }
         Ok(())
     }
 }
 
+// ── Color control ─────────────────────────────────────────────────────────────
+
 pub fn set_color(fg: Color, bg: Color) {
-    unsafe {
-        vga_set_color(fg as u8, bg as u8);
+    if framebuffer::is_active() {
+        framebuffer::set_color(fg.to_rgb(), bg.to_rgb());
+    } else {
+        unsafe { vga_set_color(fg as u8, bg as u8); }
     }
 }
 
 /// Build a VGA color byte: low nibble = fg, high nibble = bg.
-/// Matches `vga_make_color()` from hal/vga.h.
 pub fn make_color(fg: Color, bg: Color) -> u8 {
     (fg as u8) | ((bg as u8) << 4)
 }
 
+// ── Screen operations ─────────────────────────────────────────────────────────
+
 pub fn clear_screen() {
-    unsafe {
-        vga_clear();
+    if framebuffer::is_active() {
+        framebuffer::clear_screen();
+    } else {
+        unsafe { vga_clear(); }
     }
 }
 
 pub fn backspace() {
-    unsafe {
-        vga_backspace();
+    if framebuffer::is_active() {
+        framebuffer::putchar(b'\x08');
+    } else {
+        unsafe { vga_backspace(); }
     }
 }
 
 pub fn get_cursor() -> (usize, usize) {
-    let mut x: usize = 0;
-    let mut y: usize = 0;
-    unsafe {
-        vga_get_cursor(&mut x, &mut y);
+    if framebuffer::is_active() {
+        framebuffer::get_cursor()
+    } else {
+        let mut x: usize = 0;
+        let mut y: usize = 0;
+        unsafe { vga_get_cursor(&mut x, &mut y); }
+        (x, y)
     }
-    (x, y)
 }
 
 pub fn set_cursor(x: usize, y: usize) {
-    unsafe {
-        vga_set_cursor(x, y);
+    if framebuffer::is_active() {
+        framebuffer::set_cursor(x, y);
+    } else {
+        unsafe { vga_set_cursor(x, y); }
     }
 }
 
 pub fn putchar(c: u8) {
-    unsafe {
-        vga_putchar(c);
+    if framebuffer::is_active() {
+        framebuffer::putchar(c);
+    } else {
+        unsafe { vga_putchar(c); }
     }
 }
-
 
 pub fn print_fmt(args: fmt::Arguments) {
     let mut writer = VgaWriter;
