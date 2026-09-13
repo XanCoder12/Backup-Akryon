@@ -5,6 +5,8 @@ extern crate alloc;
 
 pub mod vga;
 pub mod serial;
+pub mod font;
+pub mod framebuffer;
 pub mod commands;
 pub mod shell;
 pub mod pmm;
@@ -76,11 +78,17 @@ pub extern "C" fn akryon_rust_main() -> ! {
         pmm::reserve_frame(page * pmm::PAGE_SIZE);
     }
 
+    // Reserve extended memory for VMM Page Tables & Kernel Stack (0x00100000..0x00140000)
+    for page in (0x100000 / pmm::PAGE_SIZE)..(0x140000 / pmm::PAGE_SIZE) {
+        pmm::reserve_frame(page * pmm::PAGE_SIZE);
+    }
+
     unsafe {
         ALLOCATOR.init(heap_start, heap_size);
     }
 
     vmm::init();
+    framebuffer::init();
     syscall::init();
     vfs::init();
     net::init();
