@@ -61,7 +61,7 @@ void gdt_init(void) {
     gdt_set_gate(4, 0, 0xFFFFFFFF, 0xF2, 0xCF);
 
     // 5: Task State Segment (0x28)
-    write_tss(5, 0x10, 0x90000);
+    write_tss(5, 0x10, 0x00140000);
 
     load_gdt_asm((uint32_t)&gdt_ptr);
     tss_flush_asm();
