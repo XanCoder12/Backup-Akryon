@@ -21,6 +21,11 @@ global irq8, irq9, irq10, irq11, irq12, irq13, irq14, irq15
 extern kmain
 extern isr_handler
 extern irq_handler
+extern bss_start
+extern bss_end
+
+; Kernel stack placed at 0x00130000..0x00140000 (64 KB in extended DRAM above 1MB)
+KERNEL_STACK_TOP equ 0x00140000
 
 SECTION .text
 
@@ -36,8 +41,19 @@ _start:
     mov gs, ax
     mov ss, ax
 
-    ; Setup stack
-    mov esp, 0x90000
+    ; Setup initial stack pointer in extended DRAM
+    mov esp, KERNEL_STACK_TOP
+
+    ; Zero out the entire .bss section
+    mov edi, bss_start
+    mov ecx, bss_end
+    sub ecx, edi
+    xor eax, eax
+    cld
+    rep stosb
+
+    ; Re-anchor stack top after BSS zeroing
+    mov esp, KERNEL_STACK_TOP
 
     ; Aktifkan FPU & SSE pada CR0 dan CR4
     mov eax, cr0
@@ -52,8 +68,10 @@ _start:
     ; Inisialisasi unit FPU
     fninit
 
-    ; Panggil fungsi utama C kernel
+    ; Panggil fungsi utama C kernel dengan pointer BootInfo (0x9000)
+    push 0x9000
     call kmain
+    add esp, 4
 
     ; Jika kmain kembali, lakukan halt CPU
 .hang:
