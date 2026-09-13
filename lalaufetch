@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+
+# ─── Colors ──────────────────────────────────────────────────
+RESET="\e[0m"
+BOLD="\e[1m"
+DIM="\e[2m"
+
+# Neon / mainstream palette
+C0="\e[38;5;141m"   # purple-lavender  (labels)
+C1="\e[38;5;213m"   # hot pink         (values)
+C2="\e[38;5;87m"    # cyan-mint        (accent / logo)
+C3="\e[38;5;227m"   # yellow           (username@host)
+C4="\e[38;5;203m"   # coral-red        (separators)
+C5="\e[38;5;117m"   # sky blue         (misc)
+C6="\e[38;5;82m"    # neon green       (uptime / status)
+
+# ─── ASCII Logo (galaxy) ─────────────────────────────────────
+# Braille galaxy art from galaxy.txt, colored cyan-mint
+print_logo() {
+  echo -e "${C2}${BOLD}"
+  echo -e "                         ····••••••••••··"
+  echo -e "                         ··•••●●●●●●●●●●●●●••·"
+  echo -e "                       ··••●●●●●••••••●●●●●●●●•••·······••••·······"
+  echo -e "                      ·•••●●●●•·       ·•●●●●●●●●●●●●●●●•••···"
+  echo -e "                     ••••●●●●·           •●●●●●●●●●••···"
+  echo -e "                   ··••●●●●●•      ··•••●●●●•••···"
+  echo -e "                 ·•••●●●●●●●●●••●●●●•••···•••·"
+  echo -e "             ··••●●●●●●●●●●••••···       •●●••·"
+  echo -e "        ···••●●●●●●•••···  ·●●●•·     ·•●●●••·"
+  echo -e "     ··········            ·•●●●●●●●●●●●●●•··"
+  echo -e "                             ··••●●●●●••··"
+  echo -e "${RESET}"
+}
+
+# ─── Helpers ─────────────────────────────────────────────────
+info_line() {
+  local label="$1"
+  local value="$2"
+  local icon="$3"
+  printf "  ${C0}${BOLD}%-14s${RESET}  ${C4}│${RESET}  ${C1}%s${RESET}\n" "${icon} ${label}" "${value}"
+}
+
+sep_line() {
+  printf "  ${C4}%s${RESET}\n" "──────────────────────────────────────"
+}
+
+color_blocks() {
+  local blocks=""
+  local colors=(196 202 214 226 82 45 21 93 201 198)
+  for c in "${colors[@]}"; do
+    blocks+="\e[48;5;${c}m   \e[0m"
+  done
+  printf "  %b\n" "${blocks}"
+}
+
+# ─── System Info Gathering ────────────────────────────────────
+get_os() {
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    echo "${PRETTY_NAME:-${NAME}}"
+  else
+    uname -s
+  fi
+}
+
+get_kernel() {
+  uname -r
+}
+
+get_hostname() {
+  if command -v hostname &>/dev/null; then
+    hostname
+  elif [ -f /proc/sys/kernel/hostname ]; then
+    cat /proc/sys/kernel/hostname
+  else
+    echo "${HOSTNAME:-unknown}"
+  fi
+}
+
+get_user() {
+  echo "${USER:-$(whoami)}"
+}
+
+get_shell() {
+  basename "${SHELL}"
+}
+
+get_uptime() {
+  if command -v uptime &>/dev/null; then
+    up=$(uptime -p 2>/dev/null || uptime | sed 's/.*up \([^,]*\).*/\1/')
+    echo "${up}"
+  else
+    echo "unknown"
+  fi
+}
+
+get_cpu() {
+  if [ -f /proc/cpuinfo ]; then
+    grep -m1 "model name" /proc/cpuinfo | sed 's/.*: //' | sed 's/  */ /g'
+  else
+    sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "unknown"
+  fi
+}
+
+get_memory() {
+  if [ -f /proc/meminfo ]; then
+    total=$(awk '/MemTotal/ {printf "%.0f", $2/1024}' /proc/meminfo)
+    avail=$(awk '/MemAvailable/ {printf "%.0f", $2/1024}' /proc/meminfo)
+    used=$((total - avail))
+    echo "${used} MiB / ${total} MiB"
+  else
+    echo "unknown"
+  fi
+}
+
+get_disk() {
+  df -h / 2>/dev/null | awk 'NR==2 {print $3 " / " $2 " (" $5 " used)"}'
+}
+
+get_packages() {
+  count=0
+  if command -v dpkg &>/dev/null; then
+    count=$(dpkg -l 2>/dev/null | grep -c "^ii")
+    echo "${count} (dpkg)"
+  elif command -v rpm &>/dev/null; then
+    count=$(rpm -qa 2>/dev/null | wc -l)
+    echo "${count} (rpm)"
+  elif command -v pacman &>/dev/null; then
+    count=$(pacman -Q 2>/dev/null | wc -l)
+    echo "${count} (pacman)"
+  else
+    echo "unknown"
+  fi
+}
+
+get_de_wm() {
+  local de="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-${WAYLAND_DISPLAY:+Wayland}}}"
+  echo "${de:-TTY}"
+}
+
+get_terminal() {
+  local term="${TERM_PROGRAM:-${TERM:-unknown}}"
+  echo "${term}"
+}
+
+get_arch() {
+  uname -m
+}
+
+get_local_ip() {
+  local ip
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if [ -z "$ip" ]; then
+    ip=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{print $7; exit}')
+  fi
+  echo "${ip:-N/A}"
+}
+
+get_resolution() {
+  if command -v xdpyinfo &>/dev/null; then
+    xdpyinfo 2>/dev/null | awk '/dimensions/{print $2}'
+  elif command -v xrandr &>/dev/null; then
+    xrandr 2>/dev/null | awk '/\*/{print $1; exit}'
+  else
+    echo "N/A"
+  fi
+}
+
+# ─── Banner Header ───────────────────────────────────────────
+print_header() {
+  local user host
+  user=$(get_user)
+  host=$(get_hostname)
+  echo ""
+  echo -e "  ${C3}${BOLD}${user}${RESET}${C4}@${RESET}${C3}${BOLD}${host}${RESET}"
+  sep_line
+}
+
+# ─── Main ────────────────────────────────────────────────────
+main() {
+  clear
+
+  print_logo
+
+  print_header
+
+  info_line "os"         "$(get_os)"         "󰣇"
+  info_line "kernel"     "$(get_kernel)"      "󰌽"
+  info_line "arch"       "$(get_arch)"        "󰘴"
+  info_line "host"       "$(get_hostname)"    "󰒋"
+  info_line "uptime"     "$(get_uptime)"      "󰔚"
+  info_line "shell"      "$(get_shell)"       ""
+  info_line "terminal"   "$(get_terminal)"    "󰆍"
+  info_line "de / wm"    "$(get_de_wm)"       "󰇄"
+  info_line "packages"   "$(get_packages)"    "󰏖"
+  info_line "cpu"        "$(get_cpu)"         "󰻠"
+  info_line "memory"     "$(get_memory)"      "󰍛"
+  info_line "disk (/)"   "$(get_disk)"        "󰋊"
+  info_line "local ip"   "$(get_local_ip)"    "󰩟"
+  info_line "resolution" "$(get_resolution)"  "󰹑"
+
+  sep_line
+  color_blocks
+  echo ""
+
+  # Footer — version watermark
+  echo -e "  ${DIM}${C5}lalaufetch ${C4}v1.0.0 ${C0}— system info for galaxy explorers 🌌${RESET}"
+  echo ""
+}
+
+main "$@"
