@@ -105,6 +105,17 @@ fn cmd_help() {
     println!("  lalaufetch        - Neofetch-style system info with galaxy logo");
 }
 
+fn print_pad_right(s: &str, width: usize) {
+    print!("{}", s);
+    if s.len() < width {
+        for _ in s.len()..width {
+            print!(" ");
+        }
+    } else {
+        print!("  ");
+    }
+}
+
 fn cmd_ls() {
     let files = crate::vfs::list_files();
     print_colored!(Color::LightCyan, Color::Black, "VFS Files:\n");
@@ -113,7 +124,9 @@ fn cmd_ls() {
         return;
     }
     for (name, size) in files {
-        println!("  {:<16} {} bytes", name, size);
+        print!("  ");
+        print_pad_right(&name, 16);
+        println!("{} bytes", size);
     }
 }
 
@@ -248,27 +261,32 @@ fn cmd_about() {
 // ─── lalaufetch ───────────────────────────────────────────────────────────────
 // Neofetch-style system info display with galaxy braille logo.
 // TrueColor on VBE framebuffer; degrades gracefully to VGA 16-color.
+// ─── lalaufetch ───────────────────────────────────────────────────────────────
+// Neofetch-style system info display with galaxy logo on the left, info on the right.
+// TrueColor on VBE framebuffer; degrades gracefully to VGA 16-color.
 fn cmd_lalaufetch() {
     use crate::framebuffer::{self, palette};
+    use alloc::format;
 
     vga::clear_screen();
 
     let logo: &[&str] = &[
-        "                       ....oooooooooo..",
-        "                     ..ooo@@@@@@@@@@@@@@oo.",
-        "                   ..oo@@@@@oooooo@@@@@@@@@ooo......oooo.......",
-        "                  .ooo@@@@o.       .o@@@@@@@@@@@@@@@@ooo...",
-        "                 oooo@@@@.           o@@@@@@@@@@oo...",
-        "               ..oo@@@@@o      ..ooo@@@@ooo...",
-        "             .ooo@@@@@@@@@@oo@@@@ooo...ooo.",
-        "         ..oo@@@@@@@@@@@@oooo...       o@@oo.",
-        "    ...oo@@@@@@oooo...  .@@@o.     .o@@@oo.",
-        " ..........            .o@@@@@@@@@@@@@@@o..",
-        "                         ..oo@@@@@oo..",
+        "           .   *   .      .       ",
+        "         ....oooooooooo..         ",
+        "       ..ooo@@@@@@@@@@@@@@oo.     ",
+        "     ..oo@@@@@oooooo@@@@@@@@@oo.  ",
+        "    .ooo@@@@o.       .o@@@@@@@@oo.",
+        "   oooo@@@@.           o@@@@@@@@oo",
+        " ..oo@@@@@o      ..ooo@@@@ooo...  ",
+        ".ooo@@@@@@@@@@oo@@@@ooo...ooo.    ",
+        "..oo@@@@@@@@@@@@oooo...   o@@oo.  ",
+        " ..oo@@@@@@oooo... .@@o. .o@@@oo. ",
+        "   ..........      .o@@@@@@@@@@o. ",
+        "                     ..oo@@@@oo.. ",
+        "               *    .       .   * ",
+        "           .        *    .        ",
     ];
 
-    // On TrueColor LFB: paint each logo line with a horizontal neon gradient
-    // cycling from deep-space blue → galaxy cyan → mauve.
     let grad_stops: &[(u32, u32)] = &[
         (palette::BLUE,    palette::SKY),
         (palette::SKY,     palette::TEAL),
@@ -281,123 +299,161 @@ fn cmd_lalaufetch() {
         (palette::MAUVE,   palette::LAVENDER),
         (palette::LAVENDER,palette::BLUE),
         (palette::BLUE,    palette::SKY),
+        (palette::SKY,     palette::TEAL),
+        (palette::TEAL,    palette::MAUVE),
+        (palette::MAUVE,   palette::LAVENDER),
     ];
 
-    for (i, line) in logo.iter().enumerate() {
-        if framebuffer::is_active() {
-            let (c_l, _c_r) = grad_stops[i % grad_stops.len()];
-            let (_cx, cy) = vga::get_cursor();
-            // draw gradient background strip for this line
-            framebuffer::draw_banner_bg(cy, palette::BASE, palette::MANTLE);
-            framebuffer::set_color(c_l, palette::BASE);
-            crate::print!("{}\n", line);
-            // restore default fg
-            framebuffer::set_color(palette::TEXT, palette::BASE);
-        } else {
-            print_colored!(Color::LightCyan, Color::Black, "{}\n", line);
-        }
-    }
-
-    println!("");
-
-    // ── Header ───────────────────────────────────────────────────────────────
-    if framebuffer::is_active() {
-        framebuffer::set_color(palette::YELLOW, palette::BASE);
-        crate::print!("  akryon");
-        framebuffer::set_color(palette::RED, palette::BASE);
-        crate::print!("@");
-        framebuffer::set_color(palette::PEACH, palette::BASE);
-        crate::print!("AkryonOS\n");
-        framebuffer::set_color(palette::SURFACE1, palette::BASE);
-        crate::print!("  ----------------------------------------\n");
-        framebuffer::set_color(palette::TEXT, palette::BASE);
-    } else {
-        print_colored!(Color::Yellow, Color::Black, "  akryon");
-        print_colored!(Color::LightRed, Color::Black, "@");
-        print_colored!(Color::Yellow, Color::Black, "AkryonOS\n");
-        println!("  ----------------------------------------");
-    }
-
-    // ── System info lines ────────────────────────────────────────────────────
     let uptime_sec = unsafe { timer_get_uptime_seconds() };
-    let minutes = uptime_sec / 60;
+    let hours = uptime_sec / 3600;
+    let minutes = (uptime_sec % 3600) / 60;
     let seconds = uptime_sec % 60;
+    let uptime_str = if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, seconds)
+    } else {
+        format!("{}m {}s", minutes, seconds)
+    };
+
     let total_kb = crate::pmm::total_memory() / 1024;
     let used_kb  = crate::pmm::used_memory() / 1024;
     let free_kb  = crate::pmm::free_memory() / 1024;
+    let mem_str = format!("{} KB used / {} KB total  ({} KB free)", used_kb, total_kb, free_kb);
+
     let display_mode = if framebuffer::is_active() {
-        "VBE 1024x768 32bpp TrueColor LFB"
+        if framebuffer::cols() >= 120 {
+            "VBE 1024x768 32bpp TrueColor LFB"
+        } else {
+            "VBE 800x600 32bpp TrueColor LFB"
+        }
     } else {
         "VGA 80x25 text mode"
     };
 
-    macro_rules! lf_line {
-        ($label:expr, $val_color:expr, $fmt:literal $($arg:tt)*) => {{
+    let paging_str = if crate::vmm::is_paging_enabled() {
+        "Enabled (CR0.PG=1 CR0.WP=1)"
+    } else {
+        "Disabled"
+    };
+
+    let print_info = |label: &str, fb_color: u32, vga_color: Color, val: &str| {
+        if framebuffer::is_active() {
+            framebuffer::set_color(palette::MAUVE, palette::BASE);
+            print_pad_right(label, 10);
+            framebuffer::set_color(palette::SURFACE1, palette::BASE);
+            crate::print!(" | ");
+            framebuffer::set_color(fb_color, palette::BASE);
+            crate::print!("{}", val);
+            framebuffer::set_color(palette::TEXT, palette::BASE);
+        } else {
+            vga::set_color(Color::LightMagenta, Color::Black);
+            print_pad_right(label, 10);
+            print_colored!(Color::LightRed, Color::Black, " | ");
+            print_colored!(vga_color, Color::Black, "{}", val);
+        }
+    };
+
+    for r in 0..17 {
+        // Left column: logo or blank padding (35 chars total)
+        if r < logo.len() {
             if framebuffer::is_active() {
-                crate::print!("  ");
-                framebuffer::set_color(palette::MAUVE, palette::BASE);
-                crate::print!("{:<12}", $label);
-                framebuffer::set_color(palette::SURFACE1, palette::BASE);
-                crate::print!(" | ");
-                framebuffer::set_color($val_color, palette::BASE);
-                crate::print!($fmt $($arg)*);
+                let (c_l, _) = grad_stops[r % grad_stops.len()];
+                framebuffer::set_color(c_l, palette::BASE);
+                crate::print!(" {}", logo[r]);
                 framebuffer::set_color(palette::TEXT, palette::BASE);
-                crate::print!("\n");
             } else {
-                print!("  ");
-                print_colored!(Color::LightMagenta, Color::Black, "{:<12}", $label);
-                print_colored!(Color::LightRed, Color::Black, " | ");
-                print_colored!(Color::White, Color::Black, $fmt $($arg)*);
-                println!("");
+                print_colored!(Color::LightCyan, Color::Black, " {}", logo[r]);
             }
-        }};
+        } else {
+            crate::print!("                                   ");
+        }
+
+        // Gap between logo and info (2 chars)
+        crate::print!("  ");
+
+        // Right column: system info
+        match r {
+            0 => {
+                if framebuffer::is_active() {
+                    framebuffer::set_color(palette::YELLOW, palette::BASE);
+                    crate::print!("akryon");
+                    framebuffer::set_color(palette::RED, palette::BASE);
+                    crate::print!("@");
+                    framebuffer::set_color(palette::PEACH, palette::BASE);
+                    crate::print!("AkryonOS");
+                    framebuffer::set_color(palette::TEXT, palette::BASE);
+                } else {
+                    print_colored!(Color::Yellow, Color::Black, "akryon");
+                    print_colored!(Color::LightRed, Color::Black, "@");
+                    print_colored!(Color::Yellow, Color::Black, "AkryonOS");
+                }
+            }
+            1 => {
+                if framebuffer::is_active() {
+                    framebuffer::set_color(palette::SURFACE1, palette::BASE);
+                    crate::print!("----------------------------------------");
+                    framebuffer::set_color(palette::TEXT, palette::BASE);
+                } else {
+                    print_colored!(Color::DarkGray, Color::Black, "----------------------------------------");
+                }
+            }
+            2 => print_info("os", palette::TEXT, Color::White, "Akryon OS"),
+            3 => print_info("arch", palette::TEXT, Color::White, "x86 (i686) 32-bit Protected Mode"),
+            4 => print_info("kernel", palette::GREEN, Color::LightGreen, "Rust + C Hybrid Kernel"),
+            5 => print_info("hal", palette::GREEN, Color::LightGreen, "C / ASM  (GDT IDT PIC PIT PS/2 UART)"),
+            6 => print_info("uptime", palette::GREEN, Color::LightGreen, &uptime_str),
+            7 => print_info("memory", palette::SKY, Color::LightCyan, &mem_str),
+            8 => print_info("shell", palette::TEAL, Color::LightCyan, "AkryonSH"),
+            9 => print_info("display", palette::TEAL, Color::LightCyan, display_mode),
+            10 => print_info("network", palette::SAPPHIRE, Color::LightBlue, "RTL8139 (QEMU virtio-compat)"),
+            11 => print_info("serial", palette::SAPPHIRE, Color::LightBlue, "COM1 @ 38400 baud  (0x3F8)"),
+            12 => print_info("paging", palette::YELLOW, Color::Yellow, paging_str),
+            13 => {
+                if framebuffer::is_active() {
+                    framebuffer::set_color(palette::SURFACE1, palette::BASE);
+                    crate::print!("========================================");
+                    framebuffer::set_color(palette::TEXT, palette::BASE);
+                } else {
+                    print_colored!(Color::DarkGray, Color::Black, "========================================");
+                }
+            }
+            14 => {
+                for c in 0u8..8u8 {
+                    vga::set_color(Color::Black, Color::from_u8(c));
+                    print!("   ");
+                }
+                if framebuffer::is_active() {
+                    framebuffer::set_color(palette::TEXT, palette::BASE);
+                } else {
+                    vga::set_color(Color::White, Color::Black);
+                }
+            }
+            15 => {
+                for c in 8u8..16u8 {
+                    vga::set_color(Color::Black, Color::from_u8(c));
+                    print!("   ");
+                }
+                if framebuffer::is_active() {
+                    framebuffer::set_color(palette::TEXT, palette::BASE);
+                } else {
+                    vga::set_color(Color::White, Color::Black);
+                }
+            }
+            16 => {
+                if framebuffer::is_active() {
+                    framebuffer::set_color(palette::OVERLAY, palette::BASE);
+                    crate::print!("lalaufetch v1.1.0  --  galaxy explorer edition  [TrueColor LFB]");
+                    framebuffer::set_color(palette::TEXT, palette::BASE);
+                } else {
+                    print_colored!(Color::DarkGray, Color::Black, "lalaufetch v1.1.0  --  galaxy explorer edition");
+                }
+            }
+            _ => {}
+        }
+
+        crate::println!("");
     }
 
-    lf_line!("os",      palette::TEXT,     "Akryon OS");
-    lf_line!("arch",    palette::TEXT,     "x86 (i686) 32-bit Protected Mode");
-    lf_line!("kernel",  palette::GREEN,    "Rust + C Hybrid Kernel");
-    lf_line!("hal",     palette::GREEN,    "C / ASM  (GDT IDT PIC PIT PS/2 UART)");
-    lf_line!("uptime",  palette::GREEN,    "{}m {}s", minutes, seconds);
-    lf_line!("memory",  palette::SKY,      "{} KB used / {} KB total  ({} KB free)", used_kb, total_kb, free_kb);
-    lf_line!("shell",   palette::TEAL,     "AkryonSH");
-    lf_line!("display", palette::TEAL,     "{}", display_mode);
-    lf_line!("network", palette::SAPPHIRE, "RTL8139 (QEMU virtio-compat)");
-    lf_line!("serial",  palette::SAPPHIRE, "COM1 @ 38400 baud  (0x3F8)");
-    lf_line!("paging",  palette::YELLOW,   "{}", if crate::vmm::is_paging_enabled() { "Enabled (CR0.PG=1 CR0.WP=1)" } else { "Disabled" });
-
-    if framebuffer::is_active() {
-        framebuffer::set_color(palette::SURFACE1, palette::BASE);
-        crate::print!("  =====================================\n");
-        framebuffer::set_color(palette::TEXT, palette::BASE);
-    } else {
-        println!("  ----------------------------------------");
-    }
-
-    // ── Color palette swatches ───────────────────────────────────────────────
-    print!("  ");
-    for c in 0u8..8u8 {
-        vga::set_color(Color::Black, Color::from_u8(c));
-        print!("   ");
-    }
-    vga::set_color(Color::White, Color::Black);
-    println!("");
-    print!("  ");
-    for c in 8u8..16u8 {
-        vga::set_color(Color::Black, Color::from_u8(c));
-        print!("   ");
-    }
-    vga::set_color(Color::White, Color::Black);
-    println!("");
-
-    println!("");
-    if framebuffer::is_active() {
-        framebuffer::set_color(palette::OVERLAY, palette::BASE);
-        crate::print!("  lalaufetch v1.1.0  --  galaxy explorer edition  [TrueColor LFB]\n");
-        framebuffer::set_color(palette::TEXT, palette::BASE);
-    } else {
-        print_colored!(Color::DarkGray, Color::Black, "  lalaufetch v1.1.0  --  galaxy explorer edition\n");
-    }
-    println!("");
+    crate::println!("");
 }
 
 fn cmd_sysinfo() {
@@ -685,15 +741,22 @@ fn cmd_arp(args: &str) {
         return;
     }
 
-    println!("  {:<16} {:<18} {:<8}", "IP Address", "HW Address", "Age");
-    println!("  {:<16} {:<18} {:<8}", "---------------", "-----------------", "-------");
+    print!("  ");
+    print_pad_right("IP Address", 16);
+    print!(" ");
+    print_pad_right("HW Address", 18);
+    println!(" Age");
+    println!("  --------------------------------------------------");
     let now = unsafe { crate::net::timer_get_uptime_ms() };
     for entry in table {
         let age_sec = (now.saturating_sub(entry.updated_ms)) / 1000;
-        println!("  {:<16} {:<18} {}s",
-            crate::net::format_ip(&entry.ip),
-            crate::net::format_mac(&entry.mac),
-            age_sec);
+        let ip_str = crate::net::format_ip(&entry.ip);
+        let mac_str = crate::net::format_mac(&entry.mac);
+        print!("  ");
+        print_pad_right(&ip_str, 16);
+        print!(" ");
+        print_pad_right(&mac_str, 18);
+        println!(" {}s", age_sec);
     }
 }
 
