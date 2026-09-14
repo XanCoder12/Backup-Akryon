@@ -84,6 +84,35 @@ static mut FG_COLOR:  u32 = palette::TEXT;
 static mut BG_COLOR:  u32 = 0x000000;
 static mut FB_ACTIVE: bool = false;
 
+pub const MOUSE_CURSOR_W: usize = 12;
+pub const MOUSE_CURSOR_H: usize = 18;
+
+const MOUSE_CURSOR_SPRITE: [[u8; MOUSE_CURSOR_W]; MOUSE_CURSOR_H] = [
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0],
+    [1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0],
+    [1, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0],
+    [1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0],
+    [1, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0],
+    [1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0],
+    [1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0],
+    [1, 2, 2, 1, 2, 2, 1, 0, 0, 0, 0, 0],
+    [1, 2, 1, 0, 1, 2, 2, 1, 0, 0, 0, 0],
+    [1, 1, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+];
+
+static mut MOUSE_CURSOR_VISIBLE: bool = false;
+static mut MOUSE_PREV_X: usize = 0;
+static mut MOUSE_PREV_Y: usize = 0;
+static mut MOUSE_SAVED_BG: [u32; MOUSE_CURSOR_W * MOUSE_CURSOR_H] = [0; MOUSE_CURSOR_W * MOUSE_CURSOR_H];
+
 /// One-time initialization — must be called after VMM identity-mapping is live.
 pub fn init() {
     unsafe {
@@ -223,6 +252,7 @@ pub fn show_cursor() {
 fn scroll_up_one() {
     unsafe {
         hide_cursor();
+        hide_mouse_cursor();
         let row_pixels = FONT_H * FB_PITCH;
         let text_rows = ROWS.saturating_sub(1);
         let total_words = text_rows * row_pixels;
@@ -322,6 +352,7 @@ pub fn puts(s: &str) {
 pub fn clear_screen() {
     unsafe {
         hide_cursor();
+        hide_mouse_cursor();
         clear_screen_color(BG_COLOR);
         show_cursor();
     }
@@ -342,6 +373,88 @@ pub fn set_cursor(x: usize, y: usize) {
 
 pub fn cols() -> usize { unsafe { COLS } }
 pub fn rows() -> usize { unsafe { ROWS } }
+pub fn width() -> usize { unsafe { FB_WIDTH } }
+pub fn height() -> usize { unsafe { FB_HEIGHT } }
+
+pub fn get_pixel(x: usize, y: usize) -> u32 {
+    unsafe {
+        if FB_ACTIVE && x < FB_WIDTH && y < FB_HEIGHT {
+            *FB_BASE.add(y * FB_PITCH + x)
+        } else {
+            0
+        }
+    }
+}
+
+pub fn hide_mouse_cursor() {
+    unsafe {
+        if !FB_ACTIVE || !MOUSE_CURSOR_VISIBLE {
+            return;
+        }
+        for row in 0..MOUSE_CURSOR_H {
+            let py = MOUSE_PREV_Y + row;
+            if py >= FB_HEIGHT {
+                break;
+            }
+            for col in 0..MOUSE_CURSOR_W {
+                let px = MOUSE_PREV_X + col;
+                if px < FB_WIDTH {
+                    *FB_BASE.add(py * FB_PITCH + px) = MOUSE_SAVED_BG[row * MOUSE_CURSOR_W + col];
+                }
+            }
+        }
+        MOUSE_CURSOR_VISIBLE = false;
+    }
+}
+
+pub fn render_mouse_cursor(new_x: usize, new_y: usize) {
+    unsafe {
+        if !FB_ACTIVE {
+            return;
+        }
+        if MOUSE_CURSOR_VISIBLE && (MOUSE_PREV_X != new_x || MOUSE_PREV_Y != new_y) {
+            hide_mouse_cursor();
+        }
+
+        if !MOUSE_CURSOR_VISIBLE {
+            for row in 0..MOUSE_CURSOR_H {
+                let py = new_y + row;
+                if py >= FB_HEIGHT {
+                    break;
+                }
+                for col in 0..MOUSE_CURSOR_W {
+                    let px = new_x + col;
+                    if px < FB_WIDTH {
+                        MOUSE_SAVED_BG[row * MOUSE_CURSOR_W + col] = *FB_BASE.add(py * FB_PITCH + px);
+                    } else {
+                        MOUSE_SAVED_BG[row * MOUSE_CURSOR_W + col] = 0;
+                    }
+                }
+            }
+
+            for row in 0..MOUSE_CURSOR_H {
+                let py = new_y + row;
+                if py >= FB_HEIGHT {
+                    break;
+                }
+                for col in 0..MOUSE_CURSOR_W {
+                    let px = new_x + col;
+                    if px < FB_WIDTH {
+                        match MOUSE_CURSOR_SPRITE[row][col] {
+                            1 => *FB_BASE.add(py * FB_PITCH + px) = 0x000000,
+                            2 => *FB_BASE.add(py * FB_PITCH + px) = palette::TEXT,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            MOUSE_PREV_X = new_x;
+            MOUSE_PREV_Y = new_y;
+            MOUSE_CURSOR_VISIBLE = true;
+        }
+    }
+}
 
 // ── Gradient fills (for lalaufetch) ─────────────────────────────────────────
 
