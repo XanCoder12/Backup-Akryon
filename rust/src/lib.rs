@@ -16,6 +16,7 @@ pub mod vfs;
 pub mod net;
 pub mod editor;
 pub mod vmm;
+pub mod mouse;
 
 use core::panic::PanicInfo;
 use vga::Color;
@@ -89,6 +90,11 @@ pub extern "C" fn akryon_rust_main() -> ! {
 
     vmm::init();
     framebuffer::init();
+    if framebuffer::is_active() {
+        mouse::set_bounds(framebuffer::width(), framebuffer::height());
+    } else {
+        mouse::set_bounds(80, 25);
+    }
     syscall::init();
     vfs::init();
     net::init();
