@@ -25,10 +25,10 @@ struct BootInfoC {
 
 #[allow(dead_code)]
 pub mod palette {
-    pub const BASE:     u32 = 0x1E1E2E;
-    pub const MANTLE:   u32 = 0x181825;
-    pub const SURFACE0: u32 = 0x313244;
-    pub const SURFACE1: u32 = 0x45475A;
+    pub const BASE:     u32 = 0x000000; // Pure Black
+    pub const MANTLE:   u32 = 0x000000; // Pure Black
+    pub const SURFACE0: u32 = 0x181825;
+    pub const SURFACE1: u32 = 0x313244;
     pub const TEXT:     u32 = 0xCDD6F4;
     pub const SUBTEXT:  u32 = 0xA6ADC8;
     pub const OVERLAY:  u32 = 0x6C7086;
@@ -49,7 +49,7 @@ pub mod palette {
 // ── VGA-compatible 16-color mapping to TrueColor ────────────────────────────
 
 pub const COLOR_TABLE: [u32; 16] = [
-    palette::MANTLE,     // 0 Black
+    0x000000,            // 0 Black (Pure Black)
     palette::BLUE,       // 1 Blue
     palette::GREEN,      // 2 Green
     palette::TEAL,       // 3 Cyan
@@ -77,8 +77,11 @@ static mut COLS:      usize = 0;
 static mut ROWS:      usize = 0;
 static mut CUR_X:     usize = 0;
 static mut CUR_Y:     usize = 0;
+static mut LAST_CUR_X: usize = 0;
+static mut LAST_CUR_Y: usize = 0;
+static mut CURSOR_ON:  bool = false;
 static mut FG_COLOR:  u32 = palette::TEXT;
-static mut BG_COLOR:  u32 = palette::BASE;
+static mut BG_COLOR:  u32 = 0x000000;
 static mut FB_ACTIVE: bool = false;
 
 /// One-time initialization — must be called after VMM identity-mapping is live.
@@ -187,19 +190,51 @@ fn draw_glyph(c: u8, px: usize, py: usize, fg: u32, bg: u32) {
 
 // ── Terminal scrolling ───────────────────────────────────────────────────────
 
+pub fn hide_cursor() {
+    unsafe {
+        if !FB_ACTIVE || !CURSOR_ON { return; }
+        let px = LAST_CUR_X * FONT_W;
+        let py = LAST_CUR_Y * FONT_H + 14;
+        for col in 0..FONT_W {
+            put_pixel(px + col, py, BG_COLOR);
+            put_pixel(px + col, py + 1, BG_COLOR);
+        }
+        CURSOR_ON = false;
+    }
+}
+
+pub fn show_cursor() {
+    unsafe {
+        if !FB_ACTIVE { return; }
+        hide_cursor();
+        let px = CUR_X * FONT_W;
+        let py = CUR_Y * FONT_H + 14;
+        let cursor_color = if FG_COLOR == BG_COLOR { palette::TEXT } else { FG_COLOR };
+        for col in 0..FONT_W {
+            put_pixel(px + col, py, cursor_color);
+            put_pixel(px + col, py + 1, cursor_color);
+        }
+        LAST_CUR_X = CUR_X;
+        LAST_CUR_Y = CUR_Y;
+        CURSOR_ON = true;
+    }
+}
+
 fn scroll_up_one() {
     unsafe {
+        hide_cursor();
         let row_pixels = FONT_H * FB_PITCH;
         let text_rows = ROWS.saturating_sub(1);
-
-        // Blit rows 1..ROWS up to 0..ROWS-1
+        let total_words = text_rows * row_pixels;
         let src = FB_BASE.add(row_pixels);
-        let count = text_rows * FONT_H * FB_PITCH;
-        core::ptr::copy(src, FB_BASE, count);
+        let dst = FB_BASE;
 
-        // Clear last row
-        let last_row_start = FB_BASE.add(text_rows * row_pixels);
-        for i in 0..FONT_H * FB_PITCH {
+        for i in 0..total_words {
+            *dst.add(i) = *src.add(i);
+        }
+
+        let last_row_start = FB_BASE.add(total_words);
+        for i in 0..row_pixels {
             *last_row_start.add(i) = BG_COLOR;
         }
 
@@ -223,6 +258,7 @@ pub fn get_bg() -> u32 { unsafe { BG_COLOR } }
 
 pub fn putchar(c: u8) {
     unsafe {
+        hide_cursor();
         match c {
             b'\n' => {
                 CUR_X = 0;
@@ -266,6 +302,14 @@ pub fn putchar(c: u8) {
                 CUR_X += 1;
             }
         }
+        show_cursor();
+    }
+}
+
+pub fn putchar_at(c: u8, fg: u32, bg: u32, col: usize, row: usize) {
+    unsafe {
+        if !FB_ACTIVE || col >= COLS || row >= ROWS { return; }
+        draw_glyph(c, col * FONT_W, row * FONT_H, fg, bg);
     }
 }
 
@@ -277,7 +321,9 @@ pub fn puts(s: &str) {
 
 pub fn clear_screen() {
     unsafe {
+        hide_cursor();
         clear_screen_color(BG_COLOR);
+        show_cursor();
     }
 }
 
@@ -287,8 +333,10 @@ pub fn get_cursor() -> (usize, usize) {
 
 pub fn set_cursor(x: usize, y: usize) {
     unsafe {
+        hide_cursor();
         CUR_X = x.min(COLS.saturating_sub(1));
         CUR_Y = y.min(ROWS.saturating_sub(1));
+        show_cursor();
     }
 }
 
