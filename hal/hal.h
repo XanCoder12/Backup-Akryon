@@ -13,6 +13,7 @@
 #include "rtl8139.h"
 #include "rtc.h"
 #include "fb.h"
+#include "mouse.h"
 
 void hal_init(boot_info_t* info);
 

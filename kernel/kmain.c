@@ -28,15 +28,19 @@ void hal_init(boot_info_t* boot_info) {
     keyboard_init();
     serial_puts("[Akryon Kernel] PS/2 Keyboard driver initialized.\n");
 
-    // 7. Initialize PCI Bus & RTL8139 Network Card
+    // 7. Initialize PS/2 Mouse Driver
+    mouse_init();
+    serial_puts("[Akryon Kernel] PS/2 Mouse driver initialized.\n");
+
+    // 8. Initialize PCI Bus & RTL8139 Network Card
     pci_init();
     rtl8139_init();
 
-    // 8. Initialize RTC/CMOS Real-Time Clock
+    // 9. Initialize RTC/CMOS Real-Time Clock
     rtc_init();
     serial_puts("[Akryon Kernel] RTC/CMOS driver initialized.\n");
 
-    // 9. Enable Interrupts (STI)
+    // 10. Enable Interrupts (STI)
     sti();
     serial_puts("[Akryon Kernel] Hardware interrupts enabled (STI).\n");
 }
