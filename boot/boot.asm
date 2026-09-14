@@ -129,15 +129,15 @@ init_vbe:
     mov dword [BOOT_INFO_ADDR], 0
     mov byte [BOOT_INFO_ADDR + 15], 0
 
-    mov cx, 0x144               ; 1024x768x32
+    mov cx, 0x143               ; 800x600x32 (fits 1366x768 screens perfectly)
     call .try_mode
     jnc .done
 
-    mov cx, 0x118               ; 1024x768x24/32
+    mov cx, 0x144               ; 1024x768x32 fallback
     call .try_mode
     jnc .done
 
-    mov cx, 0x115               ; 800x600x24/32
+    mov cx, 0x118               ; 1024x768x24/32 fallback
     call .try_mode
     jnc .done
     jmp .done
