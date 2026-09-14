@@ -46,11 +46,14 @@
 - **`hal/idt.h`, `hal/idt.c`, `hal/isr.h`, `hal/isr.c`**: Interrupt Descriptor Table 256 gates, PIC 8259 Remapping (Master IRQ 0..7 $\rightarrow$ 32..39, Slave IRQ 8..15 $\rightarrow$ 40..47), serta CPU exception & IRQ dispatcher.
 - **`hal/timer.h` & `hal/timer.c`**: PIT 8254 Channel 0 pada frekuensi 100Hz (10ms per tick), penghitung uptime dan fungsi delay/sleep.
 - **`hal/keyboard.h` & `hal/keyboard.c`**: Driver Keyboard PS/2 berbasis interrupt (IRQ 1) dengan circular ring buffer, pemetaan Scancode Set 1 (US QWERTY), Shift modifier, CapsLock, dan keypad.
+- **`hal/mouse.h` & `hal/mouse.c`**: Driver Mouse PS/2 berbasis interrupt (IRQ 12) dengan decoding paket streaming 3-byte, sign-extension, dan tracking koordinat (X, Y).
 - **`hal/serial.h` & `hal/serial.c`**: Driver UART 16550 Serial Port (COM1 `0x3F8` @ 38400 baud) untuk kernel logging dan debugging.
 
 ### 3. Rust Core & Shell Subsystem (`rust/`)
 - **`rust/src/lib.rs`**: `#![no_std]` Rust entry point (`akryon_rust_main`), banner boot ASCII, dan panic handler kustom berlatar belakang merah saat terjadi panic tak tertangani.
 - **`rust/src/vga.rs`**: Safe VGA writer yang mengimplementasikan `core::fmt::Write`, menyediakan macro `print!`, `println!`, dan `print_colored!`.
+- **`rust/src/framebuffer.rs`**: TrueColor linear framebuffer engine, software text cursor, dan graphical mouse arrow cursor overlay dengan background preservation.
+- **`rust/src/mouse.rs`**: Safe Rust abstraction untuk membaca posisi pointer mouse dan status tombol klik.
 - **`rust/src/serial.rs`**: Safe Serial logger yang mengimplementasikan macro `log!` dan `logln!`.
 - **`rust/src/shell.rs`**: Interactive line editor dengan prompt `akryon> `, backspace handling, dan eksekusi perintah.
 - **`rust/src/commands.rs`**: Perintah-perintah interaktif bawaan.
@@ -69,6 +72,8 @@
 | `echo <text>` | Mencetak kembali teks yang diinput |
 | `color <fg> <bg>` | Mengganti warna console secara dinamis (0..15) |
 | `calc <a op b>` | Kalkulator aritmatika integer (contoh: `calc 42 + 58`, `calc 100 * 5`) |
+| `mouse [test]` | Menampilkan status driver PS/2 mouse atau mode pointer tracking visual |
+| `paint` | Aplikasi kanvas gambar interaktif GUI di framebuffer dengan mouse |
 | `panic [pesan]` | Memicu Rust Kernel Panic untuk demonstrasi crash handler |
 | `reboot` | Melakukan soft reboot CPU |
 
@@ -86,22 +91,31 @@ Akryon/
 │   ├── string.c             # Implementasi freestanding memcpy, memset, memcmp, bcmp, strlen
 │   ├── io.h / io.c          # Port I/O wrappers (inb, outb, inw, outw, cli, sti, hlt)
 │   ├── vga.h / vga.c        # Driver VGA Text Console 80x25
+│   ├── fb.h / fb.c          # VBE Linear Framebuffer detection & initialization
 │   ├── gdt.h / gdt.c        # Global Descriptor Table (GDT)
 │   ├── idt.h / idt.c        # Interrupt Descriptor Table (IDT) & PIC 8259 Remap
 │   ├── isr.h / isr.c        # Interrupt Service Routines & Exception handlers
 │   ├── timer.h / timer.c    # PIT (Programmable Interval Timer) 100Hz
 │   ├── keyboard.h / keyboard.c # Driver PS/2 Keyboard dengan ring buffer
+│   ├── mouse.h / mouse.c    # Driver PS/2 Mouse (IRQ 12) & packet stream decoder
 │   ├── serial.h / serial.c  # Driver UART 16550 Serial COM1
+│   ├── pci.h / pci.c        # PCI Bus scanner & device discovery
+│   ├── rtl8139.h / rtl8139.c# RTL8139 Fast Ethernet NIC driver
+│   ├── rtc.h / rtc.c        # CMOS / RTC Real-Time Clock driver
 │   └── hal.h                # Unified HAL Master Header
 ├── kernel/
 │   └── kmain.c              # C Kernel initialization & Rust bridge
 ├── rust/
 │   ├── Cargo.toml           # Konfigurasi Rust package
 │   └── src/
-│       ├── lib.rs          install discord di arch linux # Rust kernel entry, panic handler, banner
+│       ├── lib.rs           # Rust kernel entry, panic handler, banner
 │       ├── vga.rs           # Safe VGA writer & print! macros
+│       ├── framebuffer.rs   # LFB TrueColor renderer & mouse cursor sprite
+│       ├── mouse.rs         # Safe Rust PS/2 mouse interface
 │       ├── serial.rs        # Safe Serial logger & log! macros
 │       ├── shell.rs         # Interactive line-buffered shell
+│       ├── editor.rs        # Full-screen text editor
+│       ├── net/             # Network stack (TCP, UDP, IPv4, DHCP, DNS, HTTP)
 │       └── commands.rs      # Command interpreter engine
 ├── linker.ld                # Linker script (dimuat di 0x10000)
 ├── Makefile                 # Build system modular
