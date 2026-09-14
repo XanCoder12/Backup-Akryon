@@ -52,6 +52,7 @@ C_OBJS := $(BUILD_DIR)/string.o \
           $(BUILD_DIR)/rtl8139.o \
           $(BUILD_DIR)/rtc.o \
           $(BUILD_DIR)/fb.o \
+          $(BUILD_DIR)/mouse.o \
           $(BUILD_DIR)/kmain.o
 
 # Rust Source Files
@@ -109,6 +110,9 @@ $(BUILD_DIR)/rtc.o: $(HAL_DIR)/rtc.c $(HAL_DIR)/rtc.h $(HAL_DIR)/io.h | $(BUILD_
 	$(CC) $(C_FLAGS) $< -o $@
 
 $(BUILD_DIR)/fb.o: $(HAL_DIR)/fb.c $(HAL_DIR)/fb.h $(HAL_DIR)/serial.h $(HAL_DIR)/types.h | $(BUILD_DIR)
+	$(CC) $(C_FLAGS) $< -o $@
+
+$(BUILD_DIR)/mouse.o: $(HAL_DIR)/mouse.c $(HAL_DIR)/mouse.h $(HAL_DIR)/io.h $(HAL_DIR)/isr.h $(HAL_DIR)/serial.h $(HAL_DIR)/types.h | $(BUILD_DIR)
 	$(CC) $(C_FLAGS) $< -o $@
 
 # 4. Build C Kernel Main
