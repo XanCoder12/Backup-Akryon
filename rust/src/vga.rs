@@ -3,6 +3,7 @@ use crate::framebuffer;
 
 extern "C" {
     fn vga_putchar(c: u8);
+    fn vga_putchar_at(c: u8, color: u8, x: usize, y: usize);
     fn serial_putchar(c: u8);
     fn vga_clear();
     fn vga_set_color(fg: u8, bg: u8);
@@ -139,6 +140,24 @@ pub fn putchar(c: u8) {
         framebuffer::putchar(c);
     } else {
         unsafe { vga_putchar(c); }
+    }
+}
+
+pub fn putchar_at(c: u8, color: u8, x: usize, y: usize) {
+    if framebuffer::is_active() {
+        let fg = Color::from_u8(color & 0x0F).to_rgb();
+        let bg = Color::from_u8((color >> 4) & 0x0F).to_rgb();
+        framebuffer::putchar_at(c, fg, bg, x, y);
+    } else {
+        unsafe { vga_putchar_at(c, color, x, y); }
+    }
+}
+
+pub fn get_dimensions() -> (usize, usize) {
+    if framebuffer::is_active() {
+        (framebuffer::cols(), framebuffer::rows())
+    } else {
+        (80, 25)
     }
 }
 
