@@ -34,7 +34,8 @@ C_FLAGS    := -m32 -mno-sse -mno-mmx -mno-sse2 -ffreestanding -fno-pie \
 RUST_TARGET:= i686-unknown-linux-gnu
 RUST_FLAGS := --target $(RUST_TARGET) --crate-type staticlib -C panic=abort \
               -C relocation-model=static -C opt-level=2 \
-              -C target-feature=-sse,-sse2,-sse4.1,-sse4.2,-avx
+              -C target-feature=-sse,-sse2,-sse4.1,-sse4.2,-avx \
+              -C llvm-args=-stackrealign
 LD_FLAGS   := -m elf_i386 -T linker.ld -nostdlib
 
 # C Objects
