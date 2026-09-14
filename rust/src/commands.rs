@@ -1,5 +1,6 @@
 use crate::vga::{self, Color};
 use crate::{print, println, print_colored, logln};
+use crate::{mouse, framebuffer};
 
 extern "C" {
     fn timer_get_ticks() -> u32;
@@ -7,6 +8,8 @@ extern "C" {
     fn timer_get_uptime_ms() -> u32;
     fn outb(port: u16, val: u8);
     fn rtc_get_datetime(t: *mut RtcTime);
+    fn keyboard_has_char() -> bool;
+    fn keyboard_getchar() -> u16;
 }
 
 /// Mirror of hal/rtc.h rtc_time_t - must match C layout exactly.
@@ -64,6 +67,8 @@ pub fn handle_command(cmd: &str) {
         "panic"    => cmd_panic(args),
         "reboot"   => cmd_reboot(),
         "lalaufetch" => cmd_lalaufetch(),
+        "mouse"    => cmd_mouse(args),
+        "paint"    => cmd_paint(),
         _ => {
             print_colored!(Color::LightRed, Color::Black, "Error: ");
             println!("Unknown command '{}'. Type 'help' for available commands.", command);
@@ -103,6 +108,8 @@ fn cmd_help() {
     println!("  panic [msg]       - Trigger Rust Kernel Panic");
     println!("  reboot            - Restart the computer");
     println!("  lalaufetch        - Neofetch-style system info with galaxy logo");
+    println!("  mouse [test]      - Display PS/2 mouse status or interactive pointer test");
+    println!("  paint             - Interactive mouse drawing canvas (ESC to exit)");
 }
 
 fn print_pad_right(s: &str, width: usize) {
@@ -1101,6 +1108,187 @@ fn cmd_vmm(args: &str) {
             println!("  vmm fault                  - Trigger intentional page fault exception (panic test)");
         }
     }
+}
+
+fn cmd_mouse(args: &str) {
+    let sub = args.trim();
+    if sub == "test" {
+        if !framebuffer::is_active() {
+            println!("Mouse test is running in text console. Move mouse or click buttons.");
+            println!("Press 'q' or ESC to exit.");
+            let mut last_ev = mouse::get_event_count();
+            loop {
+                if unsafe { keyboard_has_char() } {
+                    let key = unsafe { keyboard_getchar() };
+                    if key == 27 || key == b'q' as u16 || key == b'Q' as u16 {
+                        break;
+                    }
+                }
+                let cur_ev = mouse::get_event_count();
+                if cur_ev != last_ev {
+                    last_ev = cur_ev;
+                    let st = mouse::get_state();
+                    println!("Mouse: ({}, {}) | L:{} R:{} M:{} | Events: {}",
+                        st.x, st.y, st.left as u8, st.right as u8, st.middle as u8, cur_ev);
+                }
+            }
+            return;
+        }
+
+        framebuffer::clear_screen();
+        framebuffer::puts(" Akryon PS/2 Mouse Visual Pointer Test\n");
+        framebuffer::puts(" -------------------------------------------------------------\n");
+        framebuffer::puts(" Move pointer across screen. Click Left / Right buttons.\n");
+        framebuffer::puts(" Press 'q' or ESC to exit back to shell.\n");
+
+        loop {
+            if unsafe { keyboard_has_char() } {
+                let key = unsafe { keyboard_getchar() };
+                if key == 27 || key == b'q' as u16 || key == b'Q' as u16 {
+                    break;
+                }
+            }
+
+            let st = mouse::get_state();
+            if st.x >= 0 && st.y >= 0 {
+                framebuffer::render_mouse_cursor(st.x as usize, st.y as usize);
+            }
+        }
+
+        framebuffer::hide_mouse_cursor();
+        framebuffer::clear_screen();
+        return;
+    }
+
+    let st = mouse::get_state();
+    let events = mouse::get_event_count();
+    print_colored!(Color::LightCyan, Color::Black, "PS/2 Mouse Hardware Status:\n");
+    println!("  Position (X, Y) : ({}, {})", st.x, st.y);
+    println!("  Buttons         : Left=[{}] Right=[{}] Middle=[{}]",
+        if st.left { "PRESSED" } else { "RELEASED" },
+        if st.right { "PRESSED" } else { "RELEASED" },
+        if st.middle { "PRESSED" } else { "RELEASED" }
+    );
+    println!("  Total IRQ Events: {}", events);
+    if framebuffer::is_active() {
+        println!("  Display Bounds  : 0..{} x 0..{}", framebuffer::width(), framebuffer::height());
+    } else {
+        println!("  Display Bounds  : Text console (80x25)");
+    }
+    print_colored!(Color::Yellow, Color::Black, "Tips: ");
+    println!("Type 'mouse test' for live pointer tracking or 'paint' for drawing canvas.");
+}
+
+fn cmd_paint() {
+    if !framebuffer::is_active() {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("'paint' requires active linear framebuffer mode.");
+        return;
+    }
+
+    let fb_w = framebuffer::width();
+    let fb_h = framebuffer::height();
+    if fb_w < 100 || fb_h < 100 {
+        return;
+    }
+
+    const CANVAS_TOP: usize = 36;
+    const PALETTE_COUNT: usize = 7;
+    let palette_colors: [u32; PALETTE_COUNT] = [
+        framebuffer::palette::RED,
+        framebuffer::palette::GREEN,
+        framebuffer::palette::YELLOW,
+        framebuffer::palette::BLUE,
+        framebuffer::palette::MAUVE,
+        framebuffer::palette::TEXT,
+        framebuffer::palette::BASE,
+    ];
+
+    let mut current_color_idx: usize = 0;
+
+    framebuffer::clear_screen();
+    framebuffer::fill_rect(0, 0, fb_w, fb_h, framebuffer::palette::BASE);
+    framebuffer::fill_rect(0, 0, fb_w, CANVAS_TOP - 2, 0x1E1E2E);
+    framebuffer::fill_rect(0, CANVAS_TOP - 2, fb_w, 2, framebuffer::palette::SURFACE1);
+
+    let title = "Akryon Paint | L-Click: Draw | R-Click: Color | C: Clear | 1-7: Palette | ESC: Exit";
+    for (i, b) in title.bytes().enumerate() {
+        if i + 2 < framebuffer::cols() {
+            framebuffer::putchar_at(b, framebuffer::palette::TEXT, 0x1E1E2E, i + 1, 0);
+        }
+    }
+
+    let draw_palette = |active_idx: usize| {
+        for i in 0..PALETTE_COUNT {
+            let bx: usize = 16 + i * 36;
+            let by: usize = 18;
+            let bw: usize = 26;
+            let bh: usize = 14;
+
+            let border_c = if i == active_idx { 0xFFFFFF } else { 0x585B70 };
+            framebuffer::fill_rect(bx.saturating_sub(1), by.saturating_sub(1), bw + 2, bh + 2, border_c);
+            framebuffer::fill_rect(bx, by, bw, bh, palette_colors[i]);
+            let digit = b'1' + (i as u8);
+            framebuffer::putchar_at(digit, 0xCDD6F4, 0x1E1E2E, (bx + bw + 2) / 8, 1);
+        }
+    };
+
+    draw_palette(current_color_idx);
+
+    let mut prev_right = false;
+
+    loop {
+        if unsafe { keyboard_has_char() } {
+            let key = unsafe { keyboard_getchar() };
+            if key == 27 || key == b'q' as u16 || key == b'Q' as u16 {
+                break;
+            } else if key == b'c' as u16 || key == b'C' as u16 {
+                framebuffer::hide_mouse_cursor();
+                framebuffer::fill_rect(0, CANVAS_TOP, fb_w, fb_h - CANVAS_TOP, framebuffer::palette::BASE);
+            } else if key >= b'1' as u16 && key <= b'7' as u16 {
+                current_color_idx = (key - b'1' as u16) as usize;
+                draw_palette(current_color_idx);
+            }
+        }
+
+        let st = mouse::get_state();
+
+        if st.right && !prev_right {
+            current_color_idx = (current_color_idx + 1) % PALETTE_COUNT;
+            draw_palette(current_color_idx);
+        }
+        prev_right = st.right;
+
+        if st.left {
+            let mx = st.x as usize;
+            let my = st.y as usize;
+
+            if my >= CANVAS_TOP && mx < fb_w && my < fb_h {
+                let bx = mx.saturating_sub(1);
+                let by = my.saturating_sub(1);
+                framebuffer::fill_rect(bx, by, 3, 3, palette_colors[current_color_idx]);
+            } else if my < CANVAS_TOP {
+                for i in 0..PALETTE_COUNT {
+                    let bx = 16 + i * 36;
+                    let by = 18;
+                    if mx >= bx && mx <= bx + 28 && my >= by && my <= by + 14 {
+                        if current_color_idx != i {
+                            current_color_idx = i;
+                            draw_palette(current_color_idx);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        if st.x >= 0 && st.y >= 0 {
+            framebuffer::render_mouse_cursor(st.x as usize, st.y as usize);
+        }
+    }
+
+    framebuffer::hide_mouse_cursor();
+    framebuffer::clear_screen();
 }
 
 
