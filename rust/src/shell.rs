@@ -353,7 +353,7 @@ fn redraw_line(
 }
 
 fn print_prompt() {
-    print_colored!(Color::LightGreen, Color::Black, "akryon");
+    print_colored!(Color::LightGreen, Color::Black, "nyxara");
     print_colored!(Color::LightCyan, Color::Black, "> ");
 }
 

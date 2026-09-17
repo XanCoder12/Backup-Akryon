@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_IO_H
-#define AKRYON_HAL_IO_H
+#ifndef NYXARA_HAL_IO_H
+#define NYXARA_HAL_IO_H
 
 #include "types.h"
 
@@ -14,4 +14,4 @@ void cli(void);
 void sti(void);
 void hlt(void);
 
-#endif // AKRYON_HAL_IO_H
+#endif // NYXARA_HAL_IO_H

@@ -1,5 +1,5 @@
 ; ==============================================================================
-; Akryon OS - Kernel Entry & ISR Handlers
+; Nyxara OS - Kernel Entry & ISR Handlers
 ; 32-bit Protected Mode Assembly Glue
 ; ==============================================================================
 

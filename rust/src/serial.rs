@@ -31,7 +31,7 @@ pub fn log_fmt(args: fmt::Arguments) {
 
 pub fn log_mem(total_kb: usize, free_kb: usize) {
     unsafe {
-        serial_puts(b"[Akryon Kernel] Memory: total \0".as_ptr());
+        serial_puts(b"[Nyxara Kernel] Memory: total \0".as_ptr());
         serial_putdec(total_kb as u32);
         serial_puts(b" KB, free \0".as_ptr());
         serial_putdec(free_kb as u32);

@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_TYPES_H
-#define AKRYON_HAL_TYPES_H
+#ifndef NYXARA_HAL_TYPES_H
+#define NYXARA_HAL_TYPES_H
 
 typedef unsigned char      uint8_t;
 typedef unsigned short     uint16_t;
@@ -33,4 +33,4 @@ size_t strlen(const char* str);
 int    strcmp(const char* s1, const char* s2);
 int    strncmp(const char* s1, const char* s2, size_t n);
 
-#endif // AKRYON_HAL_TYPES_H
+#endif // NYXARA_HAL_TYPES_H

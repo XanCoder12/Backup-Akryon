@@ -112,7 +112,7 @@ void mouse_init(void) {
     (void)mouse_read();
 
     isr_register_handler(44, mouse_callback);
-    serial_puts("[Akryon HAL] PS/2 Mouse streaming enabled on IRQ 12 (vector 44).\n");
+    serial_puts("[Nyxara HAL] PS/2 Mouse streaming enabled on IRQ 12 (vector 44).\n");
 }
 
 void mouse_set_bounds(int32_t max_x, int32_t max_y) {

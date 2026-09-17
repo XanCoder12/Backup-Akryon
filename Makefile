@@ -1,5 +1,5 @@
 # ==============================================================================
-# Akryon OS - Makefile
+# Nyxara OS - Makefile
 # Hybrid C and Rust Operating System Build System
 # ==============================================================================
 
@@ -20,11 +20,11 @@ KERN_DIR  := kernel
 RUST_DIR  := rust
 
 # Target Files
-OS_IMAGE   := akryon.img
+OS_IMAGE   := nyxara.img
 BOOT_BIN   := $(BUILD_DIR)/boot.bin
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
 KERNEL_ELF := $(BUILD_DIR)/kernel.elf
-RUST_LIB   := $(BUILD_DIR)/libakryon_rust.a
+RUST_LIB   := $(BUILD_DIR)/libnyxara_rust.a
 
 # Flags
 ASM_FLAGS  := -f elf32
@@ -135,7 +135,7 @@ $(KERNEL_BIN): $(KERNEL_ELF)
 $(OS_IMAGE): $(BOOT_BIN) $(KERNEL_BIN)
 	cat $(BOOT_BIN) $(KERNEL_BIN) > $(OS_IMAGE)
 	truncate -s 1474560 $(OS_IMAGE)
-	@echo "\n>>> Akryon OS Image successfully built: $(OS_IMAGE) (1.44 MB) <<<\n"
+	@echo "\n>>> Nyxara OS Image successfully built: $(OS_IMAGE) (1.44 MB) <<<\n"
 
 QEMU_NET := -netdev user,id=net0 -device rtl8139,netdev=net0
 QEMU_VGA := -vga std

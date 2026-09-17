@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_MOUSE_H
-#define AKRYON_HAL_MOUSE_H
+#ifndef NYXARA_HAL_MOUSE_H
+#define NYXARA_HAL_MOUSE_H
 
 #include "types.h"
 
@@ -15,4 +15,4 @@ int32_t mouse_get_y(void);
 uint8_t mouse_get_buttons(void);
 uint32_t mouse_get_event_count(void);
 
-#endif // AKRYON_HAL_MOUSE_H
+#endif // NYXARA_HAL_MOUSE_H

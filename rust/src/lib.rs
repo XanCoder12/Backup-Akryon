@@ -51,7 +51,7 @@ fn panic(info: &PanicInfo) -> ! {
     println!("Message: {}", info.message());
     println!("System halted. Please reboot.");
 
-    logln!("[Akryon Kernel Panic] {}", info.message());
+    logln!("[Nyxara Kernel Panic] {}", info.message());
 
     loop {
         unsafe {
@@ -61,7 +61,7 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub extern "C" fn akryon_rust_main() -> ! {
+pub extern "C" fn nyxara_rust_main() -> ! {
     vga::clear_screen();
 
     let k_start = unsafe { &kernel_start as *const u8 as usize };
@@ -106,7 +106,7 @@ pub extern "C" fn akryon_rust_main() -> ! {
     print_colored!(Color::LightGreen, Color::Black, "/_/  |_/_/|_/_/   \\__, /\\____/_/ /_/\\____//____/  \n");
     print_colored!(Color::LightGreen, Color::Black, "                 /____/                           \n\n");
 
-    print_colored!(Color::Yellow, Color::Black, " Akryon Operating System - Unix-like Hybrid Architecture\n");
+    print_colored!(Color::Yellow, Color::Black, " Nyxara Operating System - Unix-like Hybrid Architecture\n");
     println!(" -------------------------------------------------------------");
     print_colored!(Color::LightGray, Color::Black, " * Low-Level HAL & Drivers : C / Assembly (NASM)\n");
     print_colored!(Color::LightGray, Color::Black, " * Kernel Core & Shell     : Rust (no_std, alloc)\n");
@@ -124,7 +124,7 @@ pub extern "C" fn akryon_rust_main() -> ! {
     print_colored!(Color::LightCyan, Color::Black, "[INFO] ");
     println!("Type 'help' for available commands or 'about' for details.\n");
 
-    logln!("[Akryon Kernel] Rust core initialized.");
+    logln!("[Nyxara Kernel] Rust core initialized.");
     crate::serial::log_mem(pmm::total_memory() / 1024, pmm::free_memory() / 1024);
 
     let test_msg = "POSIX syscall test verified at boot.\n";

@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_SERIAL_H
-#define AKRYON_HAL_SERIAL_H
+#ifndef NYXARA_HAL_SERIAL_H
+#define NYXARA_HAL_SERIAL_H
 
 #include "types.h"
 
@@ -13,4 +13,4 @@ void serial_puthex16(uint16_t val);
 void serial_puthex8(uint8_t val);
 void serial_putdec(uint32_t val);
 
-#endif // AKRYON_HAL_SERIAL_H
+#endif // NYXARA_HAL_SERIAL_H

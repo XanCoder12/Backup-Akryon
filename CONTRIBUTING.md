@@ -1,6 +1,6 @@
-# Contributing to Akryon OS
+# Contributing to Nyxara OS
 
-Terima kasih atas ketertarikan Anda untuk berkontribusi pada pengembangan **Akryon OS**! 🚀
+Terima kasih atas ketertarikan Anda untuk berkontribusi pada pengembangan **Nyxara OS**! 🚀
 
 ---
 

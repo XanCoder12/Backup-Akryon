@@ -1,4 +1,4 @@
-/// Akryon OS — Linear Framebuffer Console
+/// Nyxara OS — Linear Framebuffer Console
 /// Double-buffered pixel-level rendering, embedded Terminus 8×16 bitmap font,
 /// TrueColor (RGB888) text rendering, and graphical terminal emulation.
 

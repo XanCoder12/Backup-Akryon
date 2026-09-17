@@ -1,5 +1,5 @@
 // ==============================================================================
-// Akryon OS - Virtual Memory Manager (VMM) & x86 Paging
+// Nyxara OS - Virtual Memory Manager (VMM) & x86 Paging
 // Two-level Paging (Page Directory & Page Tables) with ISR 14 Page Fault Handler
 // ==============================================================================
 

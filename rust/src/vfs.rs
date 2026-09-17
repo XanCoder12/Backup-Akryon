@@ -64,7 +64,7 @@ pub fn init() {
         inode_type: InodeType::File,
         data: Vec::new(),
     };
-    motd.data.extend_from_slice(b"Welcome to Akryon Unix-like Operating System!\n");
+    motd.data.extend_from_slice(b"Welcome to Nyxara Unix-like Operating System!\n");
     fs.files.push(motd);
 
     let mut readme = MemoryInode {
@@ -72,7 +72,7 @@ pub fn init() {
         inode_type: InodeType::File,
         data: Vec::new(),
     };
-    readme.data.extend_from_slice(b"Akryon kernel v2 with POSIX syscalls and VFS.\n");
+    readme.data.extend_from_slice(b"Nyxara kernel v2 with POSIX syscalls and VFS.\n");
     fs.files.push(readme);
 
     unsafe {

@@ -62,14 +62,14 @@ static void rtl8139_irq_handler(registers_t *regs) {
 int rtl8139_init(void) {
     pci_device_t dev;
     if (!pci_find_device(0x10EC, 0x8139, &dev)) {
-        serial_puts("[Akryon RTL8139] Device 10EC:8139 not found on PCI bus.\n");
+        serial_puts("[Nyxara RTL8139] Device 10EC:8139 not found on PCI bus.\n");
         return -1;
     }
 
     pci_enable_bus_master(&dev);
     io_base = (uint16_t)(dev.bar0 & ~0x3);
 
-    serial_puts("[Akryon RTL8139] Found at I/O port ");
+    serial_puts("[Nyxara RTL8139] Found at I/O port ");
     serial_puthex16(io_base);
     serial_puts(", IRQ ");
     serial_putdec(dev.irq);
@@ -87,7 +87,7 @@ int rtl8139_init(void) {
         mac_address[i] = inb(io_base + RTL_REG_MAC0 + i);
     }
 
-    serial_puts("[Akryon RTL8139] MAC Address: ");
+    serial_puts("[Nyxara RTL8139] MAC Address: ");
     for (int i = 0; i < 6; i++) {
         serial_puthex8(mac_address[i]);
         if (i < 5) serial_puts(":");

@@ -9,7 +9,7 @@ build/
 # OS Disk Images & ISO
 *.img
 *.iso
-akryon.img
+nyxara.img
 akromos.img
 
 # Rust Target & Artifacts

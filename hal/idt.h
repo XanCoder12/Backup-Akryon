@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_IDT_H
-#define AKRYON_HAL_IDT_H
+#ifndef NYXARA_HAL_IDT_H
+#define NYXARA_HAL_IDT_H
 
 #include "types.h"
 
@@ -21,4 +21,4 @@ typedef struct idt_ptr_struct idt_ptr_t;
 void idt_init(void);
 void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags);
 
-#endif // AKRYON_HAL_IDT_H
+#endif // NYXARA_HAL_IDT_H

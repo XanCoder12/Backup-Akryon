@@ -1,6 +1,6 @@
-# Akryon
+# Nyxara
 
-**Akryon** adalah sistem operasi hybrid modern yang dibangun dari awal (*from scratch*) untuk arsitektur **x86 (32-bit Protected Mode)** dengan menggabungkan keandalan **C & Assembly** pada level *Hardware Abstraction Layer (HAL)* dan keamanan memori serta kekuatan sistemik **Rust (`no_std`)** pada level *Kernel Core & Shell Subsystem*.
+**Nyxara** adalah sistem operasi hybrid modern yang dibangun dari awal (*from scratch*) untuk arsitektur **x86 (32-bit Protected Mode)** dengan menggabungkan keandalan **C & Assembly** pada level *Hardware Abstraction Layer (HAL)* dan keamanan memori serta kekuatan sistemik **Rust (`no_std`)** pada level *Kernel Core & Shell Subsystem*.
 
 ---
 ## Preview
@@ -11,7 +11,7 @@
 
 ```
                               +-----------------------------+
-                              |        Akryon Shell         |
+                              |        Nyxara Shell         |
                               |  (Rust Interactive Console) |
                               +-----------------------------+
                                              |
@@ -50,12 +50,12 @@
 - **`hal/serial.h` & `hal/serial.c`**: Driver UART 16550 Serial Port (COM1 `0x3F8` @ 38400 baud) untuk kernel logging dan debugging.
 
 ### 3. Rust Core & Shell Subsystem (`rust/`)
-- **`rust/src/lib.rs`**: `#![no_std]` Rust entry point (`akryon_rust_main`), banner boot ASCII, dan panic handler kustom berlatar belakang merah saat terjadi panic tak tertangani.
+- **`rust/src/lib.rs`**: `#![no_std]` Rust entry point (`nyxara_rust_main`), banner boot ASCII, dan panic handler kustom berlatar belakang merah saat terjadi panic tak tertangani.
 - **`rust/src/vga.rs`**: Safe VGA writer yang mengimplementasikan `core::fmt::Write`, menyediakan macro `print!`, `println!`, dan `print_colored!`.
 - **`rust/src/framebuffer.rs`**: TrueColor linear framebuffer engine, software text cursor, dan graphical mouse arrow cursor overlay dengan background preservation.
 - **`rust/src/mouse.rs`**: Safe Rust abstraction untuk membaca posisi pointer mouse dan status tombol klik.
 - **`rust/src/serial.rs`**: Safe Serial logger yang mengimplementasikan macro `log!` dan `logln!`.
-- **`rust/src/shell.rs`**: Interactive line editor dengan prompt `akryon> `, backspace handling, dan eksekusi perintah.
+- **`rust/src/shell.rs`**: Interactive line editor dengan prompt `nyxara> `, backspace handling, dan eksekusi perintah.
 - **`rust/src/commands.rs`**: Perintah-perintah interaktif bawaan.
 
 ---
@@ -65,7 +65,7 @@
 | Perintah | Deskripsi |
 |---|---|
 | `help` | Menampilkan panduan dan daftar perintah yang tersedia |
-| `clear` | Membersihkan layar dan menampilkan kembali banner Akryon |
+| `clear` | Membersihkan layar dan menampilkan kembali banner Nyxara |
 | `about` | Menampilkan informasi arsitektur hybrid C & Rust OS |
 | `sysinfo` | Menampilkan mode CPU, pointer stack, status interrupt, dan timer ticks |
 | `uptime` | Menampilkan waktu aktif sistem sejak proses boot |
@@ -82,7 +82,7 @@
 ## 📁 Struktur Direktori
 
 ```
-Akryon/
+Nyxara/
 ├── boot/
 │   ├── boot.asm             # MBR Bootloader (16-bit real mode -> 32-bit protected mode)
 │   └── kernel_entry.asm     # 32-bit Entry point, FPU/SSE setup & ISR stubs
@@ -154,7 +154,7 @@ rustup target add i686-unknown-linux-gnu
 make clean
 make
 ```
-Perintah ini akan mengkompilasi bootloader NASM, HAL C, Rust static library, melakukan linking via `ld`, dan membuat file disk image `akryon.img`.
+Perintah ini akan mengkompilasi bootloader NASM, HAL C, Rust static library, melakukan linking via `ld`, dan membuat file disk image `nyxara.img`.
 
 ### 2. Menjalankan di QEMU
 ```bash

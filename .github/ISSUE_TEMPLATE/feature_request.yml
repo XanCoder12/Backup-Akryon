@@ -1,10 +1,10 @@
 name: Feature Request
-description: Ajukan ide fitur, driver baru, atau peningkatan sistem untuk Akryon OS
+description: Ajukan ide fitur, driver baru, atau peningkatan sistem untuk Nyxara OS
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
-      value: Punya ide seru untuk Akryon OS? Beritahu kami!
+      value: Punya ide seru untuk Nyxara OS? Beritahu kami!
   - type: textarea
     id: feature-description
     attributes:

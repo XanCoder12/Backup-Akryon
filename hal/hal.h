@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_H
-#define AKRYON_HAL_H
+#ifndef NYXARA_HAL_H
+#define NYXARA_HAL_H
 
 #include "io.h"
 #include "vga.h"
@@ -17,4 +17,4 @@
 
 void hal_init(boot_info_t* info);
 
-#endif // AKRYON_HAL_H
+#endif // NYXARA_HAL_H

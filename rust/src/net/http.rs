@@ -43,7 +43,7 @@ pub fn fetch(url: &str, timeout_ms: u32) -> Result<String, &'static str> {
     let mut stream = tcp::connect(ip, port, timeout_ms)?;
 
     let request = format!(
-        "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: AkryonOS/0.1\r\nAccept: */*\r\nConnection: close\r\n\r\n",
+        "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: NyxaraOS/0.1\r\nAccept: */*\r\nConnection: close\r\n\r\n",
         path, host
     );
 
@@ -82,15 +82,15 @@ pub fn handle_http_request(req_text: &str) -> String {
         let uptime_ms = unsafe { super::timer_get_uptime_ms() };
 
         let body = format!(
-            "<!DOCTYPE html><html><head><title>Akryon OS Server</title>\
+            "<!DOCTYPE html><html><head><title>Nyxara OS Server</title>\
             <style>body{{background:#0d1117;color:#58a6ff;font-family:sans-serif;padding:2rem;}}\
             .box{{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.5rem;color:#c9d1d9;}}\
             h1{{color:#7ee787;margin-top:0;}}</style></head>\
-            <body><div class=\"box\"><h1>Akryon Operating System</h1>\
+            <body><div class=\"box\"><h1>Nyxara Operating System</h1>\
             <p><strong>Kernel:</strong> x86 Protected Mode Hybrid (C/Rust)</p>\
             <p><strong>IPv4 Address:</strong> {} | <strong>MAC:</strong> {}</p>\
             <p><strong>Uptime:</strong> {} ms</p>\
-            <p><em>Served directly from Akryon OS HTTP Stack!</em></p>\
+            <p><em>Served directly from Nyxara OS HTTP Stack!</em></p>\
             </div></body></html>",
             ip_str, mac_str, uptime_ms
         );
@@ -104,7 +104,7 @@ pub fn handle_http_request(req_text: &str) -> String {
     if path == "/api/status" {
         let uptime = unsafe { super::timer_get_uptime_ms() };
         let body = format!(
-            "{{\"os\":\"Akryon\",\"version\":\"0.1.0\",\"arch\":\"x86\",\"uptime_ms\":{}}}",
+            "{{\"os\":\"Nyxara\",\"version\":\"0.1.0\",\"arch\":\"x86\",\"uptime_ms\":{}}}",
             uptime
         );
         return format!(

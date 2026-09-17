@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_VGA_H
-#define AKRYON_HAL_VGA_H
+#ifndef NYXARA_HAL_VGA_H
+#define NYXARA_HAL_VGA_H
 
 #include "types.h"
 
@@ -48,4 +48,4 @@ void vga_set_cursor(size_t x, size_t y);
 void vga_get_cursor(size_t* x, size_t* y);
 void vga_backspace(void);
 
-#endif // AKRYON_HAL_VGA_H
+#endif // NYXARA_HAL_VGA_H

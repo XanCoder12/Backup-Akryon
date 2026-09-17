@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_TIMER_H
-#define AKRYON_HAL_TIMER_H
+#ifndef NYXARA_HAL_TIMER_H
+#define NYXARA_HAL_TIMER_H
 
 #include "types.h"
 
@@ -11,4 +11,4 @@ uint32_t timer_get_uptime_seconds(void);
 uint32_t timer_get_uptime_ms(void);
 void timer_sleep_ms(uint32_t ms);
 
-#endif // AKRYON_HAL_TIMER_H
+#endif // NYXARA_HAL_TIMER_H

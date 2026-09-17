@@ -90,7 +90,7 @@ pub fn send_ping(target_ip: Ipv4Address, seq: u16, timeout_ms: u32) -> Result<u3
         code: 0,
         id: ping_id,
         seq,
-        payload: b"AkryonPingPacket".to_vec(),
+        payload: b"NyxaraPingPacket".to_vec(),
     };
 
     unsafe {

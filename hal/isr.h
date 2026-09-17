@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_ISR_H
-#define AKRYON_HAL_ISR_H
+#ifndef NYXARA_HAL_ISR_H
+#define NYXARA_HAL_ISR_H
 
 #include "types.h"
 
@@ -16,4 +16,4 @@ void isr_register_handler(uint8_t n, isr_t handler);
 void isr_handler(registers_t* regs);
 void irq_handler(registers_t* regs);
 
-#endif // AKRYON_HAL_ISR_H
+#endif // NYXARA_HAL_ISR_H

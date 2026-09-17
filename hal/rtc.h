@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_RTC_H
-#define AKRYON_HAL_RTC_H
+#ifndef NYXARA_HAL_RTC_H
+#define NYXARA_HAL_RTC_H
 
 #include "types.h"
 
@@ -28,4 +28,4 @@ void rtc_init(void);
  */
 void rtc_get_datetime(rtc_time_t* t);
 
-#endif // AKRYON_HAL_RTC_H
+#endif // NYXARA_HAL_RTC_H

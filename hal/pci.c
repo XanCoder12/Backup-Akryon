@@ -87,7 +87,7 @@ int pci_find_device(uint16_t vendor_id, uint16_t device_id, pci_device_t *out_de
 }
 
 void pci_init(void) {
-    serial_puts("[Akryon HAL] Scanning PCI Bus...\n");
+    serial_puts("[Nyxara HAL] Scanning PCI Bus...\n");
 
     for (uint16_t bus = 0; bus < 256; bus++) {
         for (uint8_t slot = 0; slot < 32; slot++) {

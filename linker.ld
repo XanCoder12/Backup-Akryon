@@ -1,5 +1,5 @@
 /* ==============================================================================
- * Akryon OS - Linker Script
+ * Nyxara OS - Linker Script
  * Combines Assembly entry, C HAL drivers, and Rust kernel staticlib
  * ============================================================================== */
 

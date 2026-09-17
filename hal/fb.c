@@ -13,7 +13,7 @@ void fb_init(boot_info_t* info) {
     if (info->magic == BOOT_INFO_MAGIC && info->is_graphical) {
         current_fb_info = *info;
         fb_active = 1;
-        serial_puts("[Akryon HAL] VBE Linear Framebuffer initialized: ");
+        serial_puts("[Nyxara HAL] VBE Linear Framebuffer initialized: ");
         if (info->fb_width == 1024) {
             serial_puts("1024x768");
         } else if (info->fb_width == 800) {
@@ -24,7 +24,7 @@ void fb_init(boot_info_t* info) {
         serial_puts(" @ 32bpp\n");
     } else {
         fb_active = 0;
-        serial_puts("[Akryon HAL] VBE not available, fallback to VGA text mode.\n");
+        serial_puts("[Nyxara HAL] VBE not available, fallback to VGA text mode.\n");
     }
 }
 

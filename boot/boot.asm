@@ -1,5 +1,5 @@
 ; ==============================================================================
-; Akryon OS - Universal MBR Bootloader (LBA 64-sector chunk loader)
+; Nyxara OS - Universal MBR Bootloader (LBA 64-sector chunk loader)
 ; 16-bit Real Mode -> 32-bit Protected Mode Loader
 ; ==============================================================================
 
@@ -267,7 +267,7 @@ dap_lba_high:
 boot_drive:        db 0
 sectors_remaining: dw 0
 
-msg_boot:          db "[Akryon] Booting Akryon OS...", 13, 10, 0
+msg_boot:          db "[Nyxara] Booting Nyxara OS...", 13, 10, 0
 msg_disk_err:      db "[ERROR] Disk read error!", 13, 10, 0
 
 times 510-($-$$) db 0

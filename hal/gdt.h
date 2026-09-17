@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_GDT_H
-#define AKRYON_HAL_GDT_H
+#ifndef NYXARA_HAL_GDT_H
+#define NYXARA_HAL_GDT_H
 
 #include "types.h"
 
@@ -54,4 +54,4 @@ void gdt_init(void);
 void gdt_set_gate(int32_t num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran);
 void tss_set_stack(uint32_t ss0, uint32_t esp0);
 
-#endif // AKRYON_HAL_GDT_H
+#endif // NYXARA_HAL_GDT_H

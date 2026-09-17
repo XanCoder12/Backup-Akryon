@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_PCI_H
-#define AKRYON_HAL_PCI_H
+#ifndef NYXARA_HAL_PCI_H
+#define NYXARA_HAL_PCI_H
 
 #include "types.h"
 
@@ -28,4 +28,4 @@ void pci_init(void);
 int  pci_find_device(uint16_t vendor_id, uint16_t device_id, pci_device_t *out_dev);
 void pci_enable_bus_master(const pci_device_t *dev);
 
-#endif // AKRYON_HAL_PCI_H
+#endif // NYXARA_HAL_PCI_H

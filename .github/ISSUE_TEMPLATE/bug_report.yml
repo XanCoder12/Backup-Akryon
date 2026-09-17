@@ -1,5 +1,5 @@
 name: Bug Report
-description: Laporkan bug atau kendala pada Akryon OS
+description: Laporkan bug atau kendala pada Nyxara OS
 labels: ["bug"]
 body:
   - type: markdown

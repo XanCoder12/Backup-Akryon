@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_FB_H
-#define AKRYON_HAL_FB_H
+#ifndef NYXARA_HAL_FB_H
+#define NYXARA_HAL_FB_H
 
 #include "types.h"
 
@@ -20,4 +20,4 @@ void fb_init(boot_info_t* info);
 boot_info_t* fb_get_info(void);
 uint8_t fb_is_active(void);
 
-#endif // AKRYON_HAL_FB_H
+#endif // NYXARA_HAL_FB_H

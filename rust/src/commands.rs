@@ -30,7 +30,7 @@ pub fn handle_command(cmd: &str) {
         return;
     }
 
-    logln!("[Akryon Shell] Executing command: '{}'", trimmed);
+    logln!("[Nyxara Shell] Executing command: '{}'", trimmed);
 
     let mut parts = trimmed.splitn(2, ' ');
     let command = parts.next().unwrap_or("");
@@ -103,7 +103,7 @@ fn cmd_help() {
     println!("  arp [-a|-c]       - View dynamic ARP cache or flush entries");
     println!("  netstat           - Display interface, socket, and traffic statistics");
     println!("  curl <url>        - Fetch HTTP web content over TCP");
-    println!("  httpd [port]      - Run embedded Akryon HTTP web server");
+    println!("  httpd [port]      - Run embedded Nyxara HTTP web server");
     println!("  nc [-u] <ip> <p>  - Send raw network payload via Netcat");
     println!("  panic [msg]       - Trigger Rust Kernel Panic");
     println!("  reboot            - Restart the computer");
@@ -255,7 +255,7 @@ fn cmd_free() {
 
 fn cmd_clear() {
     vga::clear_screen();
-    print_colored!(Color::LightGreen, Color::Black, "Akryon OS - Unix-like Hybrid C & Rust Operating System\n\n");
+    print_colored!(Color::LightGreen, Color::Black, "Nyxara OS - Unix-like Hybrid C & Rust Operating System\n\n");
 }
 
 fn cmd_about() {
@@ -382,16 +382,16 @@ fn cmd_lalaufetch() {
             0 => {
                 if framebuffer::is_active() {
                     framebuffer::set_color(palette::YELLOW, palette::BASE);
-                    crate::print!("akryon");
+                    crate::print!("nyxara");
                     framebuffer::set_color(palette::RED, palette::BASE);
                     crate::print!("@");
                     framebuffer::set_color(palette::PEACH, palette::BASE);
-                    crate::print!("AkryonOS");
+                    crate::print!("NyxaraOS");
                     framebuffer::set_color(palette::TEXT, palette::BASE);
                 } else {
-                    print_colored!(Color::Yellow, Color::Black, "akryon");
+                    print_colored!(Color::Yellow, Color::Black, "nyxara");
                     print_colored!(Color::LightRed, Color::Black, "@");
-                    print_colored!(Color::Yellow, Color::Black, "AkryonOS");
+                    print_colored!(Color::Yellow, Color::Black, "NyxaraOS");
                 }
             }
             1 => {
@@ -403,13 +403,13 @@ fn cmd_lalaufetch() {
                     print_colored!(Color::DarkGray, Color::Black, "----------------------------------------");
                 }
             }
-            2 => print_info("os", palette::TEXT, Color::White, "Akryon OS"),
+            2 => print_info("os", palette::TEXT, Color::White, "Nyxara OS"),
             3 => print_info("arch", palette::TEXT, Color::White, "x86 (i686) 32-bit Protected Mode"),
             4 => print_info("kernel", palette::GREEN, Color::LightGreen, "Rust + C Hybrid Kernel"),
             5 => print_info("hal", palette::GREEN, Color::LightGreen, "C / ASM  (GDT IDT PIC PIT PS/2 UART)"),
             6 => print_info("uptime", palette::GREEN, Color::LightGreen, &uptime_str),
             7 => print_info("memory", palette::SKY, Color::LightCyan, &mem_str),
-            8 => print_info("shell", palette::TEAL, Color::LightCyan, "AkryonSH"),
+            8 => print_info("shell", palette::TEAL, Color::LightCyan, "NyxaraSH"),
             9 => print_info("display", palette::TEAL, Color::LightCyan, display_mode),
             10 => print_info("network", palette::SAPPHIRE, Color::LightBlue, "RTL8139 (QEMU virtio-compat)"),
             11 => print_info("serial", palette::SAPPHIRE, Color::LightBlue, "COM1 @ 38400 baud  (0x3F8)"),
@@ -561,7 +561,7 @@ fn cmd_calc(args: &str) {
 
 fn cmd_panic(args: &str) {
     let msg = if args.trim().is_empty() {
-        "Manual panic triggered by user from Akryon shell!"
+        "Manual panic triggered by user from Nyxara shell!"
     } else {
         args.trim()
     };
@@ -569,8 +569,8 @@ fn cmd_panic(args: &str) {
 }
 
 fn cmd_reboot() {
-    print_colored!(Color::Yellow, Color::Black, "Rebooting Akryon OS...\n");
-    logln!("[Akryon Kernel] System reboot triggered.");
+    print_colored!(Color::Yellow, Color::Black, "Rebooting Nyxara OS...\n");
+    logln!("[Nyxara Kernel] System reboot triggered.");
 
     unsafe {
         core::arch::asm!("cli");
@@ -825,7 +825,7 @@ fn cmd_httpd(args: &str) {
     let ip_str = cfg.map(|c| crate::net::format_ip(&c.ip)).unwrap_or_else(|| alloc::string::String::from("0.0.0.0"));
 
     print_colored!(Color::LightGreen, Color::Black, "[HTTPD] ");
-    println!("Akryon Micro HTTP Server listening on {}:{}", ip_str, port);
+    println!("Nyxara Micro HTTP Server listening on {}:{}", ip_str, port);
     println!("Routes available: / (Dashboard), /api/status, or VFS files.");
     println!("Press Ctrl+C or 'q' to stop server.\n");
 
@@ -891,7 +891,7 @@ fn cmd_nc(args: &str) {
     let message = if parts.len() > msg_start_idx {
         parts[msg_start_idx..].join(" ")
     } else {
-        alloc::string::String::from("Hello from Akryon Netcat!")
+        alloc::string::String::from("Hello from Nyxara Netcat!")
     };
 
     if is_udp {
@@ -1136,7 +1136,7 @@ fn cmd_mouse(args: &str) {
         }
 
         framebuffer::clear_screen();
-        framebuffer::puts(" Akryon PS/2 Mouse Visual Pointer Test\n");
+        framebuffer::puts(" Nyxara PS/2 Mouse Visual Pointer Test\n");
         framebuffer::puts(" -------------------------------------------------------------\n");
         framebuffer::puts(" Move pointer across screen. Click Left / Right buttons.\n");
         framebuffer::puts(" Press 'q' or ESC to exit back to shell.\n");
@@ -1211,7 +1211,7 @@ fn cmd_paint() {
     framebuffer::fill_rect(0, 0, fb_w, CANVAS_TOP - 2, 0x1E1E2E);
     framebuffer::fill_rect(0, CANVAS_TOP - 2, fb_w, 2, framebuffer::palette::SURFACE1);
 
-    let title = "Akryon Paint | L-Click: Draw | R-Click: Color | C: Clear | 1-7: Palette | ESC: Exit";
+    let title = "Nyxara Paint | L-Click: Draw | R-Click: Color | C: Clear | 1-7: Palette | ESC: Exit";
     for (i, b) in title.bytes().enumerate() {
         if i + 2 < framebuffer::cols() {
             framebuffer::putchar_at(b, framebuffer::palette::TEXT, 0x1E1E2E, i + 1, 0);

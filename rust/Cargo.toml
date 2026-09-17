@@ -1,9 +1,9 @@
 [package]
-name = "akryon_rust"
+name = "nyxara_rust"
 version = "0.1.0"
 edition = "2021"
 authors = ["Akrom", "Ye-Shaiyoe"]
-description = "Akryon OS Rust Kernel Core and Shell Subsystem"
+description = "Nyxara OS Rust Kernel Core and Shell Subsystem"
 
 [lib]
 crate-type = ["staticlib"]

@@ -1,5 +1,5 @@
-#ifndef AKRYON_HAL_KEYBOARD_H
-#define AKRYON_HAL_KEYBOARD_H
+#ifndef NYXARA_HAL_KEYBOARD_H
+#define NYXARA_HAL_KEYBOARD_H
 
 #include "types.h"
 
@@ -36,5 +36,5 @@ void keyboard_init(void);
 uint16_t keyboard_getchar(void);
 bool keyboard_has_char(void);
 
-#endif // AKRYON_HAL_KEYBOARD_H
+#endif // NYXARA_HAL_KEYBOARD_H
 

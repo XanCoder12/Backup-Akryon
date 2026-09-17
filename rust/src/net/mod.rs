@@ -142,7 +142,7 @@ pub fn init() {
         save_config_to_vfs(&cfg);
     }
 
-    logln!("[Akryon Net] Initialized modern network stack on eth0 (MAC: {}, IP: {})",
+    logln!("[Nyxara Net] Initialized modern network stack on eth0 (MAC: {}, IP: {})",
         format_mac(&cfg.mac), format_ip(&cfg.ip));
 
     unsafe {
