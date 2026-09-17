@@ -141,15 +141,18 @@ QEMU_NET := -netdev user,id=net0 -device rtl8139,netdev=net0
 QEMU_VGA := -vga std
 
 # Run in QEMU (GUI)
-run: $(OS_IMAGE)
+run: clean
+	$(MAKE) $(OS_IMAGE)
 	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw $(QEMU_VGA) $(QEMU_NET)
 
 # Run in QEMU with Serial output directed to terminal stdio
-run-serial: $(OS_IMAGE)
+run-serial: clean
+	$(MAKE) $(OS_IMAGE)
 	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw $(QEMU_VGA) -serial stdio $(QEMU_NET)
 
 # Run in QEMU with Curses text console mode
-run-curses: $(OS_IMAGE)
+run-curses: clean
+	$(MAKE) $(OS_IMAGE)
 	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw -curses $(QEMU_NET)
 
 # Run in QEMU with GDB Debug Server (waiting on port 1234)

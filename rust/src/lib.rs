@@ -99,12 +99,21 @@ pub extern "C" fn nyxara_rust_main() -> ! {
     vfs::init();
     net::init();
 
-    print_colored!(Color::LightCyan, Color::Black, "    ___    __                            ____  _____\n");
-    print_colored!(Color::LightCyan, Color::Black, "   /   |  / /___________  ______  ____  / __ \\/ ___/\n");
-    print_colored!(Color::LightCyan, Color::Black, "  / /| | / //_/ ___/ / / / __ \\/ __ \\/ / / /\\__ \\ \n");
-    print_colored!(Color::LightGreen, Color::Black, " / ___ |/ ,< / /  / /_/ / /_/ / / / / /_/ /___/ / \n");
-    print_colored!(Color::LightGreen, Color::Black, "/_/  |_/_/|_/_/   \\__, /\\____/_/ /_/\\____//____/  \n");
-    print_colored!(Color::LightGreen, Color::Black, "                 /____/                           \n\n");
+    print_colored!(
+        Color::LightCyan,
+        Color::Black,
+        r#"
+        _   _                            ____   _____
+       | \ | |                          / __ \ / ____|
+       |  \| |_   ___  ____ _ _ __ __ _| |  | | (___
+       | . ` | | | \ \/ / _` | '__/ _` | |  | |\___ \
+       | |\  | |_| |>  < (_| | | | (_| | |__| |____) |
+       |_| \_|\__, /_/\_\__,_|_|  \__,_|\____/|_____/
+               __/ |
+              |___/
+    "#
+    );
+
 
     print_colored!(Color::Yellow, Color::Black, " Nyxara Operating System - Unix-like Hybrid Architecture\n");
     println!(" -------------------------------------------------------------");
@@ -143,4 +152,3 @@ pub extern "C" fn nyxara_rust_main() -> ! {
 
     shell::run_shell();
 }
-
