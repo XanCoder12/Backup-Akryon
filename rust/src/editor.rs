@@ -17,7 +17,6 @@ const MAX_LINES: usize = 512;   // Maximum buffer lines
 
 extern "C" {
     fn keyboard_getchar() -> u16;
-    fn vga_putchar_at(c: u8, color: u8, x: usize, y: usize);
 }
 
 /// Core text editor state.
@@ -99,11 +98,11 @@ impl Editor {
         } else {
             // Empty row past end of file - render tilde like vim
             let color = vga::make_color(Color::DarkGray, Color::Black);
-            unsafe { vga_putchar_at(b'~', color, 0, screen_row); }
+            vga::putchar_at(b'~', color, 0, screen_row);
             // Clear rest of row
             let bg = vga::make_color(Color::LightGray, Color::Black);
             for col in 1..EDITOR_COLS {
-                unsafe { vga_putchar_at(b' ', bg, col, screen_row); }
+                vga::putchar_at(b' ', bg, col, screen_row);
             }
             return;
         };
@@ -114,7 +113,7 @@ impl Editor {
         for col in 0..EDITOR_COLS {
             let ch = if col < line.len() { line[col] } else { b' ' };
             let color = if col < line.len() { text_color } else { bg_color };
-            unsafe { vga_putchar_at(ch, color, col, screen_row); }
+            vga::putchar_at(ch, color, col, screen_row);
         }
     }
 
@@ -130,14 +129,14 @@ impl Editor {
         // "mway - " prefix
         let prefix = b"mway - ";
         for &b in prefix {
-            unsafe { vga_putchar_at(b, bar_color, col, STATUS_ROW - 1); }
+            vga::putchar_at(b, bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
 
         // Filename
         for b in self.filename.bytes() {
             if col >= 40 { break; }
-            unsafe { vga_putchar_at(b, bar_color, col, STATUS_ROW - 1); }
+            vga::putchar_at(b, bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
 
@@ -147,14 +146,14 @@ impl Editor {
             for &b in marker {
                 if col >= 50 { break; }
                 let c = if b == b'[' || b == b']' { bar_color } else { mod_color };
-                unsafe { vga_putchar_at(b, c, col, STATUS_ROW - 1); }
+                vga::putchar_at(b, c, col, STATUS_ROW - 1);
                 col += 1;
             }
         }
 
         // Fill middle with spaces
         while col < 55 {
-            unsafe { vga_putchar_at(b' ', bar_color, col, STATUS_ROW - 1); }
+            vga::putchar_at(b' ', bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
 
@@ -169,7 +168,7 @@ impl Editor {
         // Print hint first at the right side
         let hint_start = EDITOR_COLS - hint.len();
         for (i, &b) in hint.iter().enumerate() {
-            unsafe { vga_putchar_at(b, hint_color, hint_start + i, STATUS_ROW - 1); }
+            vga::putchar_at(b, hint_color, hint_start + i, STATUS_ROW - 1);
         }
 
         // Print line/col info
@@ -178,19 +177,19 @@ impl Editor {
         let ln_label = b"Ln:";
         let mut pcol = pos_start;
         for &b in ln_label {
-            unsafe { vga_putchar_at(b, bar_color, pcol, STATUS_ROW - 1); }
+            vga::putchar_at(b, bar_color, pcol, STATUS_ROW - 1);
             pcol += 1;
         }
         pcol = write_number_at(row_display, pcol, STATUS_ROW - 1, bar_color);
-        unsafe { vga_putchar_at(b'/', bar_color, pcol, STATUS_ROW - 1); }
+        vga::putchar_at(b'/', bar_color, pcol, STATUS_ROW - 1);
         pcol += 1;
         pcol = write_number_at(total_lines, pcol, STATUS_ROW - 1, bar_color);
-        unsafe { vga_putchar_at(b' ', bar_color, pcol, STATUS_ROW - 1); }
+        vga::putchar_at(b' ', bar_color, pcol, STATUS_ROW - 1);
         pcol += 1;
         // "Col:"
         let col_label = b"Col:";
         for &b in col_label {
-            if pcol < hint_start { unsafe { vga_putchar_at(b, bar_color, pcol, STATUS_ROW - 1); } }
+            if pcol < hint_start { vga::putchar_at(b, bar_color, pcol, STATUS_ROW - 1); }
             pcol += 1;
         }
         let _ = write_number_at(col_display, pcol, STATUS_ROW - 1, bar_color);
@@ -398,11 +397,11 @@ impl Editor {
         let mut col = 0;
         for b in msg.bytes() {
             if col >= EDITOR_COLS { break; }
-            unsafe { vga_putchar_at(b, bar_color, col, STATUS_ROW - 1); }
+            vga::putchar_at(b, bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
         while col < EDITOR_COLS {
-            unsafe { vga_putchar_at(b' ', bar_color, col, STATUS_ROW - 1); }
+            vga::putchar_at(b' ', bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
         self.update_hw_cursor();
@@ -419,11 +418,11 @@ impl Editor {
         let mut col = 0;
         for &b in msg {
             if col >= EDITOR_COLS { break; }
-            unsafe { vga_putchar_at(b, bar_color, col, STATUS_ROW - 1); }
+            vga::putchar_at(b, bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
         while col < EDITOR_COLS {
-            unsafe { vga_putchar_at(b' ', bar_color, col, STATUS_ROW - 1); }
+            vga::putchar_at(b' ', bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
         self.update_hw_cursor();
@@ -498,7 +497,7 @@ impl Editor {
 /// Helper: write an unsigned integer to VGA at (col, row), return new col.
 fn write_number_at(mut n: usize, mut col: usize, row: usize, color: u8) -> usize {
     if n == 0 {
-        unsafe { vga_putchar_at(b'0', color, col, row); }
+        vga::putchar_at(b'0', color, col, row);
         return col + 1;
     }
     let mut buf = [0u8; 8];
@@ -510,7 +509,7 @@ fn write_number_at(mut n: usize, mut col: usize, row: usize, color: u8) -> usize
     }
     for i in (0..len).rev() {
         if col < EDITOR_COLS {
-            unsafe { vga_putchar_at(buf[i], color, col, row); }
+            vga::putchar_at(buf[i], color, col, row);
             col += 1;
         }
     }
