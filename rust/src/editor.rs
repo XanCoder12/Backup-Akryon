@@ -1,8 +1,8 @@
 use crate::vga::{self, Color};
 use crate::shell::{
-    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT,
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_CTRL_LEFT, KEY_CTRL_RIGHT,
     KEY_HOME, KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN,
-    KEY_BACKSPACE, KEY_DEL_CHAR, KEY_DELETE,
+    KEY_BACKSPACE, KEY_DEL_CHAR, KEY_DELETE, KEY_ALT_DELETE,
     KEY_ENTER, KEY_RETURN,
     KEY_CTRL_S, KEY_CTRL_Q,
     KEY_CTRL_A, KEY_CTRL_E, KEY_CTRL_K,
@@ -260,6 +260,26 @@ impl Editor {
         }
     }
 
+    fn move_word_left(&mut self) {
+        let line = &self.lines[self.cursor_row];
+        while self.cursor_col > 0 && line[self.cursor_col - 1] == b' ' {
+            self.cursor_col -= 1;
+        }
+        while self.cursor_col > 0 && line[self.cursor_col - 1] != b' ' {
+            self.cursor_col -= 1;
+        }
+    }
+
+    fn move_word_right(&mut self) {
+        let line_len = self.lines[self.cursor_row].len();
+        while self.cursor_col < line_len && self.lines[self.cursor_row][self.cursor_col] != b' ' {
+            self.cursor_col += 1;
+        }
+        while self.cursor_col < line_len && self.lines[self.cursor_row][self.cursor_col] == b' ' {
+            self.cursor_col += 1;
+        }
+    }
+
     fn move_home(&mut self) {
         self.cursor_col = 0;
     }
@@ -351,6 +371,24 @@ impl Editor {
             self.lines[self.cursor_row].extend_from_slice(&next_line);
             self.modified = true;
         }
+    }
+
+    /// Delete the next word (Alt+Delete).
+    fn delete_word_forward(&mut self) {
+        let line_len = self.lines[self.cursor_row].len();
+        if self.cursor_col >= line_len {
+            return;
+        }
+        let start = self.cursor_col;
+        while self.cursor_col < line_len && self.lines[self.cursor_row][self.cursor_col] == b' ' {
+            self.cursor_col += 1;
+        }
+        while self.cursor_col < line_len && self.lines[self.cursor_row][self.cursor_col] != b' ' {
+            self.cursor_col += 1;
+        }
+        self.lines[self.cursor_row].drain(start..self.cursor_col);
+        self.cursor_col = start;
+        self.modified = true;
     }
 
     /// Kill line from cursor to end (Ctrl+K).
@@ -456,6 +494,8 @@ impl Editor {
                 KEY_DOWN       => { self.move_down();  }
                 KEY_LEFT       => { self.move_left();  }
                 KEY_RIGHT      => { self.move_right(); }
+                KEY_CTRL_LEFT  => { self.move_word_left(); }
+                KEY_CTRL_RIGHT => { self.move_word_right(); }
                 KEY_HOME | KEY_CTRL_A => { self.move_home(); }
                 KEY_END  | KEY_CTRL_E => { self.move_end(); }
                 KEY_PAGE_UP    => { self.page_up();    }
@@ -465,6 +505,7 @@ impl Editor {
                 KEY_ENTER | KEY_RETURN => { self.insert_newline(); }
                 KEY_BACKSPACE | KEY_DEL_CHAR => { self.backspace(); }
                 KEY_DELETE => { self.delete_char(); }
+                KEY_ALT_DELETE => { self.delete_word_forward(); }
                 KEY_CTRL_K => { self.kill_to_end(); }
 
                 // Save
