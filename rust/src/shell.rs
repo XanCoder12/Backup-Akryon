@@ -18,6 +18,9 @@ pub const KEY_PAGE_UP: u16 = 0x0106;
 pub const KEY_PAGE_DOWN: u16 = 0x0107;
 pub const KEY_INSERT: u16 = 0x0108;
 pub const KEY_DELETE: u16 = 0x0109;
+pub const KEY_CTRL_LEFT: u16 = 0x010A;
+pub const KEY_CTRL_RIGHT: u16 = 0x010B;
+pub const KEY_ALT_DELETE: u16 = 0x010C;
 
 // Control character constants
 pub const KEY_CTRL_A: u16 = 0x0001; // Beginning of line (Home)
@@ -179,6 +182,26 @@ pub fn run_shell() -> ! {
                 }
             }
 
+            // Ctrl+Arrow: Move by one word
+            KEY_CTRL_LEFT => {
+                while cursor > 0 && buffer[cursor - 1] == b' ' {
+                    cursor -= 1;
+                }
+                while cursor > 0 && buffer[cursor - 1] != b' ' {
+                    cursor -= 1;
+                }
+                vga::set_cursor(prompt_x + cursor, prompt_y);
+            }
+            KEY_CTRL_RIGHT => {
+                while cursor < len && buffer[cursor] != b' ' {
+                    cursor += 1;
+                }
+                while cursor < len && buffer[cursor] == b' ' {
+                    cursor += 1;
+                }
+                vga::set_cursor(prompt_x + cursor, prompt_y);
+            }
+
             // Home / Ctrl+A: Jump to beginning of line
             KEY_HOME | KEY_CTRL_A => {
                 cursor = 0;
@@ -263,6 +286,27 @@ pub fn run_shell() -> ! {
                         buffer[i - 1] = buffer[i];
                     }
                     len -= 1;
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                }
+            }
+
+            // Alt+Delete: Delete the next word
+            KEY_ALT_DELETE => {
+                if cursor < len {
+                    let old_len = len;
+                    let start = cursor;
+                    while cursor < len && buffer[cursor] == b' ' {
+                        cursor += 1;
+                    }
+                    while cursor < len && buffer[cursor] != b' ' {
+                        cursor += 1;
+                    }
+                    let deleted_count = cursor - start;
+                    for i in cursor..len {
+                        buffer[i - deleted_count] = buffer[i];
+                    }
+                    len -= deleted_count;
+                    cursor = start;
                     redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
                 }
             }
@@ -356,4 +400,3 @@ fn print_prompt() {
     print_colored!(Color::LightGreen, Color::Black, "nyxara");
     print_colored!(Color::LightCyan, Color::Black, "> ");
 }
-
