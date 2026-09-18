@@ -5,7 +5,8 @@
 ---
 ## Preview
 
-<img width="646" height="376" alt="screenshot-2026-09-03_23 50 16" src="https://github.com/user-attachments/assets/2b761484-a1d0-4dc4-80d7-b7588ebf40b8" />
+<img width="830" height="424" alt="image" src="https://github.com/user-attachments/assets/3d597770-9a72-4257-be91-7878536a452a" />
+
 
 ## 🌟 Arsitektur & Desain Sistem
 
