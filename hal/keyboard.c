@@ -85,14 +85,24 @@ static void keyboard_callback(registers_t* regs) {
         switch (scancode) {
             case 0x48: special_key = KEY_UP; break;
             case 0x50: special_key = KEY_DOWN; break;
-            case 0x4B: special_key = KEY_LEFT; break;
-            case 0x4D: special_key = KEY_RIGHT; break;
+            case 0x4B:
+                special_key = ctrl_pressed ? KEY_CTRL_LEFT : KEY_LEFT;
+                break;
+            case 0x4D:
+                special_key = ctrl_pressed ? KEY_CTRL_RIGHT : KEY_RIGHT;
+                break;
             case 0x47: special_key = KEY_HOME; break;
             case 0x4F: special_key = KEY_END; break;
             case 0x49: special_key = KEY_PAGE_UP; break;
             case 0x51: special_key = KEY_PAGE_DOWN; break;
             case 0x52: special_key = KEY_INSERT; break;
-            case 0x53: special_key = KEY_DELETE; break;
+            case 0x53:
+                if (alt_pressed) {
+                    special_key = KEY_ALT_DELETE;
+                } else {
+                    special_key = KEY_DELETE;
+                }
+                break;
             case 0x1C: special_key = '\n'; break; // Keypad Enter
             case 0x35: special_key = '/'; break;  // Keypad /
             default: break;
