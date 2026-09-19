@@ -157,6 +157,11 @@ static void keyboard_callback(registers_t* regs) {
     }
 
     if (scancode < 128) {
+        if (alt_pressed && scancode == 0x0E) {
+            keyboard_push(KEY_ALT_BACKSPACE);
+            return;
+        }
+
         // If Control is active
         if (ctrl_pressed) {
             char lower_char = kbd_us_lower[scancode];

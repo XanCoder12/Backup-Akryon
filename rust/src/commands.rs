@@ -1001,7 +1001,7 @@ fn cmd_vmm(args: &str) {
                 let cr3 = unsafe { crate::vmm::read_cr3() };
                 println!("  Page Dir (CR3)  : 0x{:08X}", cr3);
                 println!("  Identity Map    : 0x00000000 - 0x03FFFFFF (64 MB)");
-                println!("  Total Mapped    : {} pages ({} KB)", 
+                println!("  Total Mapped    : {} pages ({} KB)",
                     crate::vmm::total_mapped_pages(),
                     crate::vmm::total_mapped_pages() * 4
                 );
@@ -1013,7 +1013,7 @@ fn cmd_vmm(args: &str) {
         "test" => {
             print_colored!(Color::LightCyan, Color::Black, "[VMM Test] ");
             println!("Running automated paging and demand-paging verification suite...");
-            
+
             print!("  1. Testing Identity Mapping (Kernel & VGA) ... ");
             let k_ok = crate::vmm::get_phys_addr(0x10000) == Some(0x10000);
             let vga_ok = crate::vmm::get_phys_addr(0xB8000) == Some(0xB8000);
@@ -1290,5 +1290,3 @@ fn cmd_paint() {
     framebuffer::hide_mouse_cursor();
     framebuffer::clear_screen();
 }
-
-

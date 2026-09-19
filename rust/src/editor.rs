@@ -2,7 +2,7 @@ use crate::vga::{self, Color};
 use crate::shell::{
     KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_CTRL_LEFT, KEY_CTRL_RIGHT,
     KEY_HOME, KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN,
-    KEY_BACKSPACE, KEY_DEL_CHAR, KEY_DELETE, KEY_ALT_DELETE,
+    KEY_BACKSPACE, KEY_DEL_CHAR, KEY_DELETE, KEY_ALT_DELETE, KEY_ALT_BACKSPACE,
     KEY_ENTER, KEY_RETURN,
     KEY_CTRL_S, KEY_CTRL_Q,
     KEY_CTRL_A, KEY_CTRL_E, KEY_CTRL_K,
@@ -391,6 +391,22 @@ impl Editor {
         self.modified = true;
     }
 
+    /// Delete the previous word (Alt+Backspace).
+    fn delete_word_backward(&mut self) {
+        if self.cursor_col == 0 {
+            return;
+        }
+        let end = self.cursor_col;
+        while self.cursor_col > 0 && self.lines[self.cursor_row][self.cursor_col - 1] == b' ' {
+            self.cursor_col -= 1;
+        }
+        while self.cursor_col > 0 && self.lines[self.cursor_row][self.cursor_col - 1] != b' ' {
+            self.cursor_col -= 1;
+        }
+        self.lines[self.cursor_row].drain(self.cursor_col..end);
+        self.modified = true;
+    }
+
     /// Kill line from cursor to end (Ctrl+K).
     fn kill_to_end(&mut self) {
         let line_len = self.lines[self.cursor_row].len();
@@ -506,6 +522,7 @@ impl Editor {
                 KEY_BACKSPACE | KEY_DEL_CHAR => { self.backspace(); }
                 KEY_DELETE => { self.delete_char(); }
                 KEY_ALT_DELETE => { self.delete_word_forward(); }
+                KEY_ALT_BACKSPACE => { self.delete_word_backward(); }
                 KEY_CTRL_K => { self.kill_to_end(); }
 
                 // Save

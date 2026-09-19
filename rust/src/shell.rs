@@ -21,6 +21,7 @@ pub const KEY_DELETE: u16 = 0x0109;
 pub const KEY_CTRL_LEFT: u16 = 0x010A;
 pub const KEY_CTRL_RIGHT: u16 = 0x010B;
 pub const KEY_ALT_DELETE: u16 = 0x010C;
+pub const KEY_ALT_BACKSPACE: u16 = 0x010D;
 
 // Control character constants
 pub const KEY_CTRL_A: u16 = 0x0001; // Beginning of line (Home)
@@ -286,6 +287,26 @@ pub fn run_shell() -> ! {
                         buffer[i - 1] = buffer[i];
                     }
                     len -= 1;
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                }
+            }
+
+            // Alt+Backspace: Delete the previous word
+            KEY_ALT_BACKSPACE => {
+                if cursor > 0 {
+                    let old_len = len;
+                    let end = cursor;
+                    while cursor > 0 && buffer[cursor - 1] == b' ' {
+                        cursor -= 1;
+                    }
+                    while cursor > 0 && buffer[cursor - 1] != b' ' {
+                        cursor -= 1;
+                    }
+                    let deleted_count = end - cursor;
+                    for i in end..len {
+                        buffer[i - deleted_count] = buffer[i];
+                    }
+                    len -= deleted_count;
                     redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
                 }
             }

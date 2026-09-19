@@ -16,7 +16,8 @@
 #define KEY_DELETE    0x0109
 #define KEY_CTRL_LEFT 0x010A
 #define KEY_CTRL_RIGHT 0x010B
-#define KEY_ALT_DELETE 0x010C
+#define KEY_ALT_DELETE     0x010C
+#define KEY_ALT_BACKSPACE  0x010D
 
 // Standard Control Key character constants
 #define KEY_CTRL_A    0x0001
