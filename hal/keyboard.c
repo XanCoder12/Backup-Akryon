@@ -86,13 +86,19 @@ static void keyboard_callback(registers_t* regs) {
             case 0x48: special_key = KEY_UP; break;
             case 0x50: special_key = KEY_DOWN; break;
             case 0x4B:
-                special_key = ctrl_pressed ? KEY_CTRL_LEFT : KEY_LEFT;
+                special_key = ctrl_pressed ? KEY_CTRL_LEFT :
+                              (shift_pressed ? KEY_SHIFT_LEFT : KEY_LEFT);
                 break;
             case 0x4D:
-                special_key = ctrl_pressed ? KEY_CTRL_RIGHT : KEY_RIGHT;
+                special_key = ctrl_pressed ? KEY_CTRL_RIGHT :
+                              (shift_pressed ? KEY_SHIFT_RIGHT : KEY_RIGHT);
                 break;
-            case 0x47: special_key = KEY_HOME; break;
-            case 0x4F: special_key = KEY_END; break;
+            case 0x47:
+                special_key = shift_pressed ? KEY_SHIFT_HOME : KEY_HOME;
+                break;
+            case 0x4F:
+                special_key = shift_pressed ? KEY_SHIFT_END : KEY_END;
+                break;
             case 0x49: special_key = KEY_PAGE_UP; break;
             case 0x51: special_key = KEY_PAGE_DOWN; break;
             case 0x52: special_key = KEY_INSERT; break;
@@ -157,6 +163,10 @@ static void keyboard_callback(registers_t* regs) {
     }
 
     if (scancode < 128) {
+        if (shift_pressed && scancode == 0x0F) {
+            keyboard_push(KEY_SHIFT_TAB);
+            return;
+        }
         if (alt_pressed && scancode == 0x0E) {
             keyboard_push(KEY_ALT_BACKSPACE);
             return;
