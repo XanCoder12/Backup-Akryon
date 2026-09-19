@@ -18,6 +18,11 @@
 #define KEY_CTRL_RIGHT 0x010B
 #define KEY_ALT_DELETE     0x010C
 #define KEY_ALT_BACKSPACE  0x010D
+#define KEY_SHIFT_LEFT     0x010E
+#define KEY_SHIFT_RIGHT    0x010F
+#define KEY_SHIFT_HOME     0x0110
+#define KEY_SHIFT_END      0x0111
+#define KEY_SHIFT_TAB      0x0112
 
 // Standard Control Key character constants
 #define KEY_CTRL_A    0x0001
