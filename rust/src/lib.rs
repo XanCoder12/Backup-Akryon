@@ -9,6 +9,7 @@ pub mod font;
 pub mod framebuffer;
 pub mod commands;
 pub mod shell;
+pub mod line_editor;
 pub mod pmm;
 pub mod heap;
 pub mod syscall;
