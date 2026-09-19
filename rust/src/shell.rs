@@ -22,6 +22,11 @@ pub const KEY_CTRL_LEFT: u16 = 0x010A;
 pub const KEY_CTRL_RIGHT: u16 = 0x010B;
 pub const KEY_ALT_DELETE: u16 = 0x010C;
 pub const KEY_ALT_BACKSPACE: u16 = 0x010D;
+pub const KEY_SHIFT_LEFT: u16 = 0x010E;
+pub const KEY_SHIFT_RIGHT: u16 = 0x010F;
+pub const KEY_SHIFT_HOME: u16 = 0x0110;
+pub const KEY_SHIFT_END: u16 = 0x0111;
+pub const KEY_SHIFT_TAB: u16 = 0x0112;
 
 // Control character constants
 pub const KEY_CTRL_A: u16 = 0x0001; // Beginning of line (Home)
@@ -43,6 +48,7 @@ pub const KEY_DEL_CHAR: u16 = 0x007F; // ASCII Del
 
 const HISTORY_CAPACITY: usize = 16;
 const MAX_CMD_LEN: usize = 70;
+const SHELL_COLS: usize = 80;
 
 struct CommandHistory {
     entries: [[u8; MAX_CMD_LEN]; HISTORY_CAPACITY],
@@ -102,6 +108,7 @@ pub fn run_shell() -> ! {
     let mut buffer = [0u8; MAX_CMD_LEN];
     let mut len: usize = 0;
     let mut cursor: usize = 0;
+    let mut selection_anchor: Option<usize> = None;
 
     let mut draft_buffer = [0u8; MAX_CMD_LEN];
     let mut draft_len: usize = 0;
@@ -164,23 +171,43 @@ pub fn run_shell() -> ! {
                 let (nx, ny) = vga::get_cursor();
                 prompt_x = nx;
                 prompt_y = ny;
-                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, 0);
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, 0, None);
             }
 
             // Left Arrow: Move cursor left
             KEY_LEFT => {
-                if cursor > 0 {
-                    cursor -= 1;
-                    vga::set_cursor(prompt_x + cursor, prompt_y);
-                }
+                cursor = cursor.saturating_sub(1);
+                selection_anchor = None;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, None);
             }
 
             // Right Arrow: Move cursor right
             KEY_RIGHT => {
-                if cursor < len {
-                    cursor += 1;
-                    vga::set_cursor(prompt_x + cursor, prompt_y);
-                }
+                cursor = (cursor + 1).min(len);
+                selection_anchor = None;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, None);
+            }
+
+            // Shift navigation: extend the current selection
+            KEY_SHIFT_LEFT => {
+                if selection_anchor.is_none() { selection_anchor = Some(cursor); }
+                cursor = cursor.saturating_sub(1);
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, selection_anchor);
+            }
+            KEY_SHIFT_RIGHT => {
+                if selection_anchor.is_none() { selection_anchor = Some(cursor); }
+                cursor = (cursor + 1).min(len);
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, selection_anchor);
+            }
+            KEY_SHIFT_HOME => {
+                if selection_anchor.is_none() { selection_anchor = Some(cursor); }
+                cursor = 0;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, selection_anchor);
+            }
+            KEY_SHIFT_END => {
+                if selection_anchor.is_none() { selection_anchor = Some(cursor); }
+                cursor = len;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, selection_anchor);
             }
 
             // Ctrl+Arrow: Move by one word
@@ -206,13 +233,15 @@ pub fn run_shell() -> ! {
             // Home / Ctrl+A: Jump to beginning of line
             KEY_HOME | KEY_CTRL_A => {
                 cursor = 0;
-                vga::set_cursor(prompt_x, prompt_y);
+                selection_anchor = None;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, None);
             }
 
             // End / Ctrl+E: Jump to end of line
             KEY_END | KEY_CTRL_E => {
                 cursor = len;
-                vga::set_cursor(prompt_x + len, prompt_y);
+                selection_anchor = None;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, None);
             }
 
             // Up Arrow: Navigate command history (previous)
@@ -235,7 +264,7 @@ pub fn run_shell() -> ! {
                         buffer[..entry.len()].copy_from_slice(entry);
                         len = entry.len();
                         cursor = len;
-                        redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                        redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                     }
                 }
             }
@@ -251,7 +280,7 @@ pub fn run_shell() -> ! {
                             buffer[..entry.len()].copy_from_slice(entry);
                             len = entry.len();
                             cursor = len;
-                            redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                            redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                         }
                     } else {
                         // Restore draft buffer
@@ -260,34 +289,39 @@ pub fn run_shell() -> ! {
                         buffer[..draft_len].copy_from_slice(&draft_buffer[..draft_len]);
                         len = draft_len;
                         cursor = len;
-                        redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                        redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                     }
                 }
             }
 
-            // Backspace: Delete character before cursor
+            // Backspace: Delete character before cursor or selection
             KEY_BACKSPACE | KEY_DEL_CHAR => {
-
-                if cursor > 0 {
+                if delete_selection(&mut buffer, &mut len, &mut cursor, &mut selection_anchor) {
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len + 1, None);
+                } else if cursor > 0 {
                     let old_len = len;
                     for i in cursor..len {
                         buffer[i - 1] = buffer[i];
                     }
                     cursor -= 1;
                     len -= 1;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    selection_anchor = None;
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
             }
 
             // Delete / Ctrl+D: Delete character at cursor
             KEY_DELETE | KEY_CTRL_D => {
-                if cursor < len {
+                if delete_selection(&mut buffer, &mut len, &mut cursor, &mut selection_anchor) {
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len + 1, None);
+                } else if cursor < len {
                     let old_len = len;
                     for i in (cursor + 1)..len {
                         buffer[i - 1] = buffer[i];
                     }
                     len -= 1;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    selection_anchor = None;
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
             }
 
@@ -307,7 +341,7 @@ pub fn run_shell() -> ! {
                         buffer[i - deleted_count] = buffer[i];
                     }
                     len -= deleted_count;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
             }
 
@@ -328,7 +362,7 @@ pub fn run_shell() -> ! {
                     }
                     len -= deleted_count;
                     cursor = start;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
             }
 
@@ -338,7 +372,7 @@ pub fn run_shell() -> ! {
                     let old_len = len;
                     len = 0;
                     cursor = 0;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
             }
 
@@ -347,7 +381,7 @@ pub fn run_shell() -> ! {
                 if cursor < len {
                     let old_len = len;
                     len = cursor;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
             }
 
@@ -370,8 +404,20 @@ pub fn run_shell() -> ! {
                     }
                     len -= deleted_count;
                     cursor = new_cursor;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
+            }
+
+            // Shift+Tab: cycle completion backwards is not supported; clear selection.
+            KEY_SHIFT_TAB => { selection_anchor = None; }
+
+            // Tab completion
+            KEY_TAB => {
+                if selection_anchor.is_some() {
+                    delete_selection(&mut buffer, &mut len, &mut cursor, &mut selection_anchor);
+                }
+                complete_input(&mut buffer, &mut len, &mut cursor);
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, None);
             }
 
             // Printable ASCII characters
@@ -386,7 +432,7 @@ pub fn run_shell() -> ! {
                     buffer[cursor] = ch;
                     cursor += 1;
                     len += 1;
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 }
             }
 
@@ -403,18 +449,74 @@ fn redraw_line(
     len: usize,
     cursor: usize,
     old_len: usize,
+    selection_anchor: Option<usize>,
 ) {
-    vga::set_cursor(prompt_x, prompt_y);
-    for i in 0..len {
-        vga::putchar(buffer[i]);
-    }
-    // Clear any extra characters if previous line was longer
-    if old_len > len {
-        for _ in len..old_len {
-            vga::putchar(b' ');
+    let start_row = prompt_y + prompt_x / SHELL_COLS;
+    let start_col = prompt_x % SHELL_COLS;
+    let total = (start_col + len).max(1);
+    let rows = (total + SHELL_COLS - 1) / SHELL_COLS;
+    for row in 0..rows {
+        for col in 0..SHELL_COLS {
+            let absolute = row * SHELL_COLS + col;
+            let index = absolute.checked_sub(start_col);
+            let ch = match index {
+                Some(i) if i < len => buffer[i],
+                _ => b' ',
+            };
+            let selected = match (selection_anchor, index) {
+                (Some(anchor), Some(i)) => i >= anchor.min(cursor) && i < anchor.max(cursor),
+                _ => false,
+            };
+            let color = if selected {
+                vga::make_color(Color::Black, Color::LightGray)
+            } else {
+                vga::make_color(Color::White, Color::Black)
+            };
+            vga::putchar_at(ch, color, col, start_row + row);
         }
     }
-    vga::set_cursor(prompt_x + cursor, prompt_y);
+    let _ = old_len;
+    let cursor_absolute = start_col + cursor;
+    vga::set_cursor(cursor_absolute % SHELL_COLS, start_row + cursor_absolute / SHELL_COLS);
+}
+
+fn delete_selection(
+    buffer: &mut [u8; MAX_CMD_LEN],
+    len: &mut usize,
+    cursor: &mut usize,
+    anchor: &mut Option<usize>,
+) -> bool {
+    let Some(start) = *anchor else { return false; };
+    let low = start.min(*cursor);
+    let high = start.max(*cursor);
+    if low == high { *anchor = None; return false; }
+    for i in high..*len { buffer[i - (high - low)] = buffer[i]; }
+    *len -= high - low;
+    *cursor = low;
+    *anchor = None;
+    true
+}
+
+fn complete_input(buffer: &mut [u8; MAX_CMD_LEN], len: &mut usize, cursor: &mut usize) {
+    if *cursor != *len { return; }
+    let start = buffer[..*len].iter().rposition(|&b| b == b' ').map_or(0, |i| i + 1);
+    let prefix = &buffer[start..*len];
+    let mut match_name: Option<alloc::string::String> = None;
+    let commands = ["help", "clear", "about", "sysinfo", "free", "uptime", "date", "time", "ls", "cat", "touch", "write", "echo", "mway", "vmm", "reboot"];
+    for name in commands.iter() {
+        if name.as_bytes().starts_with(prefix) && name.len() > prefix.len() {
+            if match_name.is_some() { return; }
+            match_name = Some(alloc::string::String::from(*name));
+        }
+    }
+    if let Some(name) = match_name {
+        let suffix = &name.as_bytes()[prefix.len()..];
+        if *len + suffix.len() < MAX_CMD_LEN {
+            buffer[*len..*len + suffix.len()].copy_from_slice(suffix);
+            *len += suffix.len();
+            *cursor = *len;
+        }
+    }
 }
 
 fn print_prompt() {
