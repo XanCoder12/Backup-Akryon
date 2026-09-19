@@ -48,7 +48,6 @@ pub const KEY_DEL_CHAR: u16 = 0x007F; // ASCII Del
 
 const HISTORY_CAPACITY: usize = 16;
 const MAX_CMD_LEN: usize = 70;
-const SHELL_COLS: usize = 80;
 
 struct CommandHistory {
     entries: [[u8; MAX_CMD_LEN]; HISTORY_CAPACITY],
@@ -130,7 +129,7 @@ pub fn run_shell() -> ! {
         match key {
             // Enter key: execute command
             KEY_ENTER | KEY_RETURN => {
-                vga::set_cursor(prompt_x + len, prompt_y);
+                set_input_cursor(prompt_x, prompt_y, len);
                 println!();
 
                 if len > 0 {
@@ -153,7 +152,7 @@ pub fn run_shell() -> ! {
 
             // Ctrl + C: Cancel current line & start new prompt
             KEY_CTRL_C => {
-                vga::set_cursor(prompt_x + len, prompt_y);
+                set_input_cursor(prompt_x, prompt_y, len);
                 print_colored!(Color::LightRed, Color::Black, "^C\n");
                 len = 0;
                 cursor = 0;
@@ -218,7 +217,8 @@ pub fn run_shell() -> ! {
                 while cursor > 0 && buffer[cursor - 1] != b' ' {
                     cursor -= 1;
                 }
-                vga::set_cursor(prompt_x + cursor, prompt_y);
+                selection_anchor = None;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, None);
             }
             KEY_CTRL_RIGHT => {
                 while cursor < len && buffer[cursor] != b' ' {
@@ -227,7 +227,8 @@ pub fn run_shell() -> ! {
                 while cursor < len && buffer[cursor] == b' ' {
                     cursor += 1;
                 }
-                vga::set_cursor(prompt_x + cursor, prompt_y);
+                selection_anchor = None;
+                redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len, None);
             }
 
             // Home / Ctrl+A: Jump to beginning of line
@@ -296,8 +297,9 @@ pub fn run_shell() -> ! {
 
             // Backspace: Delete character before cursor or selection
             KEY_BACKSPACE | KEY_DEL_CHAR => {
+                let old_len = len;
                 if delete_selection(&mut buffer, &mut len, &mut cursor, &mut selection_anchor) {
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len + 1, None);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 } else if cursor > 0 {
                     let old_len = len;
                     for i in cursor..len {
@@ -312,8 +314,9 @@ pub fn run_shell() -> ! {
 
             // Delete / Ctrl+D: Delete character at cursor
             KEY_DELETE | KEY_CTRL_D => {
+                let old_len = len;
                 if delete_selection(&mut buffer, &mut len, &mut cursor, &mut selection_anchor) {
-                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, len + 1, None);
+                    redraw_line(prompt_x, prompt_y, &buffer, len, cursor, old_len, None);
                 } else if cursor < len {
                     let old_len = len;
                     for i in (cursor + 1)..len {
@@ -423,9 +426,9 @@ pub fn run_shell() -> ! {
             // Printable ASCII characters
             ascii if ascii >= 32 && ascii <= 126 => {
                 let ch = ascii as u8;
+                let old_len = len;
+                delete_selection(&mut buffer, &mut len, &mut cursor, &mut selection_anchor);
                 if len < MAX_CMD_LEN - 1 {
-                    let old_len = len;
-                    // Shift right for insertion
                     for i in (cursor..len).rev() {
                         buffer[i + 1] = buffer[i];
                     }
@@ -442,6 +445,23 @@ pub fn run_shell() -> ! {
     }
 }
 
+fn input_position(prompt_x: usize, prompt_y: usize, offset: usize) -> Option<(usize, usize)> {
+    let (cols, rows) = vga::get_dimensions();
+    if cols == 0 || rows == 0 {
+        return None;
+    }
+    let absolute = prompt_x.saturating_add(offset);
+    let x = absolute % cols;
+    let y = prompt_y.saturating_add(absolute / cols);
+    (y < rows).then_some((x, y))
+}
+
+fn set_input_cursor(prompt_x: usize, prompt_y: usize, offset: usize) {
+    if let Some((x, y)) = input_position(prompt_x, prompt_y, offset) {
+        vga::set_cursor(x, y);
+    }
+}
+
 fn redraw_line(
     prompt_x: usize,
     prompt_y: usize,
@@ -451,33 +471,22 @@ fn redraw_line(
     old_len: usize,
     selection_anchor: Option<usize>,
 ) {
-    let start_row = prompt_y + prompt_x / SHELL_COLS;
-    let start_col = prompt_x % SHELL_COLS;
-    let total = (start_col + len).max(1);
-    let rows = (total + SHELL_COLS - 1) / SHELL_COLS;
-    for row in 0..rows {
-        for col in 0..SHELL_COLS {
-            let absolute = row * SHELL_COLS + col;
-            let index = absolute.checked_sub(start_col);
-            let ch = match index {
-                Some(i) if i < len => buffer[i],
-                _ => b' ',
-            };
-            let selected = match (selection_anchor, index) {
-                (Some(anchor), Some(i)) => i >= anchor.min(cursor) && i < anchor.max(cursor),
-                _ => false,
-            };
-            let color = if selected {
-                vga::make_color(Color::Black, Color::LightGray)
-            } else {
-                vga::make_color(Color::White, Color::Black)
-            };
-            vga::putchar_at(ch, color, col, start_row + row);
-        }
+    let draw_len = len.max(old_len);
+    for offset in 0..draw_len {
+        let Some((x, y)) = input_position(prompt_x, prompt_y, offset) else { break; };
+        let ch = if offset < len { buffer[offset] } else { b' ' };
+        let selected = match (selection_anchor, offset < len) {
+            (Some(anchor), true) => offset >= anchor.min(cursor) && offset < anchor.max(cursor),
+            _ => false,
+        };
+        let color = if selected {
+            vga::make_color(Color::Black, Color::LightGray)
+        } else {
+            vga::make_color(Color::White, Color::Black)
+        };
+        vga::putchar_at(ch, color, x, y);
     }
-    let _ = old_len;
-    let cursor_absolute = start_col + cursor;
-    vga::set_cursor(cursor_absolute % SHELL_COLS, start_row + cursor_absolute / SHELL_COLS);
+    set_input_cursor(prompt_x, prompt_y, cursor);
 }
 
 fn delete_selection(
