@@ -1,5 +1,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::UnsafeCell;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InodeType {
@@ -45,10 +46,9 @@ impl InodeOperations for MemoryInode {
     }
 }
 
-use core::cell::UnsafeCell;
-
 pub struct RamFs {
     files: Vec<MemoryInode>,
+    current_dir: String,
 }
 
 struct SafeRamFs(UnsafeCell<Option<RamFs>>);
@@ -56,64 +56,198 @@ unsafe impl Sync for SafeRamFs {}
 
 static RAMFS: SafeRamFs = SafeRamFs(UnsafeCell::new(None));
 
+fn normalize_path(cwd: &str, input: &str) -> Option<String> {
+    if input.is_empty() {
+        return None;
+    }
+
+    let base = if input.starts_with('/') { "/" } else { cwd };
+    let mut parts: Vec<&str> = Vec::new();
+    for part in base.split('/').chain(input.split('/')) {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            value => parts.push(value),
+        }
+    }
+
+    let mut path = String::from("/");
+    for (index, part) in parts.iter().enumerate() {
+        if index > 0 {
+            path.push('/');
+        }
+        path.push_str(part);
+    }
+    Some(path)
+}
+
+fn parent_path(path: &str) -> &str {
+    match path.rfind('/') {
+        Some(0) | None => "/",
+        Some(index) => &path[..index],
+    }
+}
+
+fn find_inode<'a>(fs: &'a RamFs, path: &str) -> Option<&'a MemoryInode> {
+    fs.files.iter().find(|inode| inode.name == path)
+}
+
+fn has_directory(fs: &RamFs, path: &str) -> bool {
+    path == "/"
+        || find_inode(fs, path)
+            .map(|inode| inode.inode_type == InodeType::Directory)
+            .unwrap_or(false)
+}
+
 pub fn init() {
-    let mut fs = RamFs { files: Vec::new() };
-
-    let mut motd = MemoryInode {
-        name: String::from("motd"),
-        inode_type: InodeType::File,
-        data: Vec::new(),
+    let mut fs = RamFs {
+        files: Vec::new(),
+        current_dir: String::from("/"),
     };
-    motd.data.extend_from_slice(b"Welcome to Nyxara Unix-like Operating System!\n");
-    fs.files.push(motd);
 
-    let mut readme = MemoryInode {
-        name: String::from("readme.txt"),
-        inode_type: InodeType::File,
-        data: Vec::new(),
-    };
-    readme.data.extend_from_slice(b"Nyxara kernel v2 with POSIX syscalls and VFS.\n");
-    fs.files.push(readme);
+    for directory in ["/etc", "/dev"] {
+        fs.files.push(MemoryInode {
+            name: String::from(directory),
+            inode_type: InodeType::Directory,
+            data: Vec::new(),
+        });
+    }
+
+    for (name, data) in [
+        (
+            "/motd",
+            b"Welcome to Nyxara Unix-like Operating System!\n".as_slice(),
+        ),
+        (
+            "/readme.txt",
+            b"Nyxara kernel v2 with POSIX syscalls and VFS.\n".as_slice(),
+        ),
+    ] {
+        fs.files.push(MemoryInode {
+            name: String::from(name),
+            inode_type: InodeType::File,
+            data: data.to_vec(),
+        });
+    }
 
     unsafe {
         *RAMFS.0.get() = Some(fs);
     }
 }
 
-pub fn list_files() -> Vec<(String, usize)> {
+pub fn current_dir() -> String {
     unsafe {
-        match &*RAMFS.0.get() {
-            Some(fs) => fs.files.iter().map(|f| (f.name.clone(), f.get_size())).collect(),
-            None => Vec::new(),
-        }
+        (*RAMFS.0.get())
+            .as_ref()
+            .map(|fs| fs.current_dir.clone())
+            .unwrap_or_else(|| String::from("/"))
     }
+}
+
+pub fn change_dir(path: &str) -> Result<(), i32> {
+    unsafe {
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let target = normalize_path(&fs.current_dir, path).ok_or(-2)?;
+        if !has_directory(fs, &target) {
+            return Err(-2);
+        }
+        fs.current_dir = target;
+        Ok(())
+    }
+}
+
+pub fn make_dir(path: &str) -> Result<(), i32> {
+    unsafe {
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let target = normalize_path(&fs.current_dir, path).ok_or(-22)?;
+        if target == "/" || find_inode(fs, &target).is_some() {
+            return Err(-17);
+        }
+        if !has_directory(fs, parent_path(&target)) {
+            return Err(-2);
+        }
+        fs.files.push(MemoryInode {
+            name: target,
+            inode_type: InodeType::Directory,
+            data: Vec::new(),
+        });
+        Ok(())
+    }
+}
+
+pub fn list_dir(path: &str) -> Result<Vec<(String, usize, InodeType)>, i32> {
+    unsafe {
+        let fs = (&*RAMFS.0.get()).as_ref().ok_or(-5)?;
+        let target = normalize_path(&fs.current_dir, path).ok_or(-2)?;
+        if !has_directory(fs, &target) {
+            return Err(-2);
+        }
+
+        let prefix = if target == "/" {
+            String::from("/")
+        } else {
+            let mut value = target.clone();
+            value.push('/');
+            value
+        };
+        let mut entries = Vec::new();
+        for inode in &fs.files {
+            let Some(remainder) = inode.name.strip_prefix(&prefix) else {
+                continue;
+            };
+            if remainder.is_empty() || remainder.contains('/') {
+                continue;
+            }
+            entries.push((String::from(remainder), inode.get_size(), inode.inode_type));
+        }
+        Ok(entries)
+    }
+}
+
+pub fn list_files() -> Vec<(String, usize)> {
+    list_dir("")
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, size, _)| (name, size))
+        .collect()
 }
 
 pub fn read_file(name: &str) -> Option<Vec<u8>> {
     unsafe {
-        (*RAMFS.0.get()).as_ref()?.files.iter().find(|f| f.name == name).map(|f| f.data.clone())
+        let fs = (*RAMFS.0.get()).as_ref()?;
+        let path = normalize_path(&fs.current_dir, name)?;
+        let inode = find_inode(fs, &path)?;
+        if inode.inode_type != InodeType::File {
+            return None;
+        }
+        Some(inode.data.clone())
     }
 }
 
 pub fn write_file(name: &str, data: &[u8]) -> Result<(), i32> {
     unsafe {
-        if let Some(fs) = (&mut *RAMFS.0.get()).as_mut() {
-            if let Some(f) = fs.files.iter_mut().find(|f| f.name == name) {
-                f.data.clear();
-                f.data.extend_from_slice(data);
-                return Ok(());
-            }
-
-            let mut new_file = MemoryInode {
-                name: String::from(name),
-                inode_type: InodeType::File,
-                data: Vec::new(),
-            };
-            new_file.data.extend_from_slice(data);
-            fs.files.push(new_file);
-            Ok(())
-        } else {
-            Err(-5) // -EIO
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let path = normalize_path(&fs.current_dir, name).ok_or(-22)?;
+        if path == "/" || !has_directory(fs, parent_path(&path)) {
+            return Err(-2);
         }
+
+        if let Some(inode) = fs.files.iter_mut().find(|inode| inode.name == path) {
+            if inode.inode_type != InodeType::File {
+                return Err(-21);
+            }
+            inode.data.clear();
+            inode.data.extend_from_slice(data);
+            return Ok(());
+        }
+
+        fs.files.push(MemoryInode {
+            name: path,
+            inode_type: InodeType::File,
+            data: data.to_vec(),
+        });
+        Ok(())
     }
 }
