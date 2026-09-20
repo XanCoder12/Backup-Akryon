@@ -488,6 +488,7 @@ fn reverse_search_input(
 }
 
 fn print_prompt() {
+    let directory = crate::vfs::current_dir();
     print_colored!(Color::LightGreen, Color::Black, "nyxara");
-    print_colored!(Color::LightCyan, Color::Black, "> ");
+    print_colored!(Color::LightCyan, Color::Black, " {} > ", directory);
 }
