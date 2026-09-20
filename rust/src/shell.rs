@@ -2,6 +2,7 @@ use crate::commands;
 use crate::line_editor::{LineEditor, MAX_LINE_LEN};
 use crate::vga::{self, Color};
 use crate::{print_colored, println};
+use alloc::string::String;
 use alloc::vec::Vec;
 
 extern "C" {
@@ -45,6 +46,7 @@ pub const KEY_CTRL_U: u16 = 0x0015;
 pub const KEY_CTRL_W: u16 = 0x0017;
 pub const KEY_CTRL_S: u16 = 0x0013;
 pub const KEY_CTRL_Q: u16 = 0x0011;
+pub const KEY_CTRL_R: u16 = 0x0012;
 pub const KEY_DEL_CHAR: u16 = 0x007F;
 
 const HISTORY_CAPACITY: usize = 16;
@@ -95,8 +97,7 @@ impl CommandHistory {
         }
         if self.count > 0 {
             let last = self.count - 1;
-            if self.lens[last] == command.len()
-                && &self.entries[last][..self.lens[last]] == command
+            if self.lens[last] == command.len() && &self.entries[last][..self.lens[last]] == command
             {
                 return false;
             }
@@ -124,11 +125,25 @@ impl CommandHistory {
     }
 }
 
+struct CompletionState {
+    base: Vec<u8>,
+    token_start: usize,
+    candidates: Vec<String>,
+    next: usize,
+}
+
+struct ReverseSearchState {
+    query: Vec<u8>,
+    next_index: Option<usize>,
+}
+
 pub fn run_shell() -> ! {
     let mut history = CommandHistory::load();
     let mut editor = LineEditor::new();
     let mut draft = LineEditor::new();
     let mut history_index: Option<usize> = None;
+    let mut completion: Option<CompletionState> = None;
+    let mut reverse_search: Option<ReverseSearchState> = None;
 
     print_prompt();
     let (mut prompt_x, mut prompt_y) = vga::get_cursor();
@@ -136,10 +151,18 @@ pub fn run_shell() -> ! {
     loop {
         while unsafe { !keyboard_has_char() } {
             crate::net::poll();
-            unsafe { core::arch::asm!("hlt"); }
+            unsafe {
+                core::arch::asm!("hlt");
+            }
         }
 
         let key = unsafe { keyboard_getchar() };
+        if key != KEY_TAB {
+            completion = None;
+        }
+        if key != KEY_CTRL_R {
+            reverse_search = None;
+        }
         match key {
             KEY_ENTER | KEY_RETURN => {
                 set_input_cursor(prompt_x, prompt_y, editor.cursor());
@@ -166,6 +189,16 @@ pub fn run_shell() -> ! {
                 history_index = None;
                 print_prompt();
                 (prompt_x, prompt_y) = vga::get_cursor();
+            }
+
+            KEY_CTRL_R => {
+                reverse_search_input(
+                    &mut editor,
+                    &history,
+                    &mut reverse_search,
+                    prompt_x,
+                    prompt_y,
+                );
             }
 
             KEY_CTRL_L => {
@@ -292,7 +325,15 @@ pub fn run_shell() -> ! {
             KEY_TAB => {
                 let old_len = editor.len();
                 editor.delete_selection();
-                complete_input(&mut editor);
+                if let Some(candidates) = complete_input(&mut editor, &mut completion) {
+                    set_input_cursor(prompt_x, prompt_y, editor.len());
+                    println!();
+                    for candidate in candidates {
+                        println!("{}", candidate);
+                    }
+                    print_prompt();
+                    (prompt_x, prompt_y) = vga::get_cursor();
+                }
                 redraw_line(prompt_x, prompt_y, &editor, old_len);
             }
 
@@ -329,8 +370,14 @@ fn redraw_line(prompt_x: usize, prompt_y: usize, editor: &LineEditor, old_len: u
     let selection = editor.selection();
 
     for offset in 0..draw_len {
-        let Some((x, y)) = input_position(prompt_x, prompt_y, offset) else { break; };
-        let ch = if offset < len { editor.as_bytes()[offset] } else { b' ' };
+        let Some((x, y)) = input_position(prompt_x, prompt_y, offset) else {
+            break;
+        };
+        let ch = if offset < len {
+            editor.as_bytes()[offset]
+        } else {
+            b' '
+        };
         let selected = selection.is_some_and(|(start, end)| offset >= start && offset < end);
         let color = if selected {
             vga::make_color(Color::Black, Color::LightGray)
@@ -342,34 +389,102 @@ fn redraw_line(prompt_x: usize, prompt_y: usize, editor: &LineEditor, old_len: u
     set_input_cursor(prompt_x, prompt_y, editor.cursor());
 }
 
-fn complete_input(editor: &mut LineEditor) {
+fn complete_input(
+    editor: &mut LineEditor,
+    state: &mut Option<CompletionState>,
+) -> Option<Vec<String>> {
     if editor.cursor() != editor.len() {
-        return;
+        return None;
     }
+
+    if let Some(completion) = state.as_mut() {
+        let candidate = completion.candidates[completion.next].clone();
+        completion.next = (completion.next + 1) % completion.candidates.len();
+        replace_completion(editor, &completion.base, completion.token_start, &candidate);
+        return None;
+    }
+
     let start = editor
         .as_bytes()
         .iter()
         .rposition(|&byte| byte == b' ')
         .map_or(0, |index| index + 1);
-    let prefix_len = editor.len() - start;
-    let commands = [
-        "help", "clear", "about", "sysinfo", "free", "uptime", "date", "time", "ls",
-        "cat", "touch", "write", "echo", "mway", "vmm", "reboot",
-    ];
-    let mut match_name = None;
-    for name in commands {
-        if name.as_bytes().starts_with(&editor.as_bytes()[start..]) && name.len() > prefix_len {
-            if match_name.is_some() {
+    let prefix = &editor.as_bytes()[start..];
+    let mut candidates = Vec::new();
+
+    if start == 0 {
+        for name in [
+            "help", "clear", "about", "sysinfo", "free", "uptime", "date", "time", "ls", "cat",
+            "touch", "write", "echo", "mway", "vmm", "reboot",
+        ] {
+            if name.as_bytes().starts_with(prefix) && name.len() > prefix.len() {
+                candidates.push(String::from(name));
+            }
+        }
+    } else {
+        for (name, _) in crate::vfs::list_files() {
+            if name.as_bytes().starts_with(prefix) && name.len() > prefix.len() {
+                candidates.push(name);
+            }
+        }
+    }
+
+    match candidates.len() {
+        0 => None,
+        1 => {
+            let base = editor.as_bytes().to_vec();
+            replace_completion(editor, &base, start, &candidates[0]);
+            None
+        }
+        _ => {
+            *state = Some(CompletionState {
+                base: editor.as_bytes().to_vec(),
+                token_start: start,
+                candidates: candidates.clone(),
+                next: 0,
+            });
+            Some(candidates)
+        }
+    }
+}
+
+fn replace_completion(editor: &mut LineEditor, base: &[u8], token_start: usize, name: &str) {
+    let mut line = Vec::with_capacity(token_start + name.len());
+    line.extend_from_slice(&base[..token_start]);
+    line.extend_from_slice(name.as_bytes());
+    editor.set_line(&line);
+}
+
+fn reverse_search_input(
+    editor: &mut LineEditor,
+    history: &CommandHistory,
+    state: &mut Option<ReverseSearchState>,
+    prompt_x: usize,
+    prompt_y: usize,
+) {
+    if state.is_none() {
+        *state = Some(ReverseSearchState {
+            query: editor.as_bytes().to_vec(),
+            next_index: history.count.checked_sub(1),
+        });
+    }
+
+    let search = state.as_mut().expect("reverse search state initialized");
+    let query = &search.query;
+    let mut index = search.next_index;
+    while let Some(candidate_index) = index {
+        index = candidate_index.checked_sub(1);
+        if let Some(command) = history.get(candidate_index) {
+            if query.is_empty() || command.windows(query.len()).any(|window| window == query) {
+                let old_len = editor.len();
+                editor.set_line(command);
+                search.next_index = index;
+                redraw_line(prompt_x, prompt_y, editor, old_len);
                 return;
             }
-            match_name = Some(name);
         }
     }
-    if let Some(name) = match_name {
-        for &byte in &name.as_bytes()[prefix_len..] {
-            editor.insert(byte);
-        }
-    }
+    search.next_index = None;
 }
 
 fn print_prompt() {
