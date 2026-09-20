@@ -1,6 +1,7 @@
 use crate::vga::{self, Color};
 use crate::{print, println, print_colored, logln};
 use crate::{mouse, framebuffer};
+use crate::vfs::InodeType;
 
 extern "C" {
     fn timer_get_ticks() -> u32;
@@ -43,7 +44,10 @@ pub fn handle_command(cmd: &str) {
         "sysinfo" => cmd_sysinfo(),
         "free" | "meminfo" => cmd_free(),
         "uptime" => cmd_uptime(),
-        "ls" => cmd_ls(),
+        "pwd" => cmd_pwd(),
+        "cd" => cmd_cd(args),
+        "mkdir" => cmd_mkdir(args),
+        "ls" => cmd_ls(args),
         "cat" => cmd_cat(args),
         "touch" => cmd_touch(args),
         "write" => cmd_write(args),
@@ -84,6 +88,9 @@ fn cmd_help() {
     println!("  sysinfo           - Display hardware and CPU status");
     println!("  free / meminfo    - Display physical memory and allocator status");
     println!("  uptime            - Display system uptime");
+    println!("  pwd               - Display current directory");
+    println!("  cd <dir>          - Change current directory");
+    println!("  mkdir <dir>       - Create a directory");
     println!("  date              - Display current date from RTC/CMOS");
     println!("  time              - Display current time from RTC/CMOS");
     println!("  ls                - List files in virtual filesystem (VFS)");
@@ -123,17 +130,55 @@ fn print_pad_right(s: &str, width: usize) {
     }
 }
 
-fn cmd_ls() {
-    let files = crate::vfs::list_files();
-    print_colored!(Color::LightCyan, Color::Black, "VFS Files:\n");
-    if files.is_empty() {
-        println!("  (empty)");
+fn cmd_pwd() {
+    println!("{}", crate::vfs::current_dir());
+}
+
+fn cmd_cd(args: &str) {
+    let path = args.trim();
+    let target = if path.is_empty() { "/" } else { path };
+    if crate::vfs::change_dir(target).is_err() {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("Directory '{}' not found", target);
+    }
+}
+
+fn cmd_mkdir(args: &str) {
+    let path = args.trim();
+    if path.is_empty() {
+        print_colored!(Color::LightRed, Color::Black, "Usage: ");
+        println!("mkdir <directory>");
         return;
     }
-    for (name, size) in files {
-        print!("  ");
-        print_pad_right(&name, 16);
-        println!("{} bytes", size);
+    if crate::vfs::make_dir(path).is_err() {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("Failed to create directory '{}'", path);
+    }
+}
+
+fn cmd_ls(args: &str) {
+    let path = args.trim();
+    match crate::vfs::list_dir(path) {
+        Ok(entries) => {
+            print_colored!(Color::LightCyan, Color::Black, "VFS: {}\n", if path.is_empty() { "." } else { path });
+            if entries.is_empty() {
+                println!("  (empty)");
+                return;
+            }
+            for (name, size, kind) in entries {
+                print!("  ");
+                print_pad_right(&name, 16);
+                if kind == InodeType::Directory {
+                    println!("<DIR>");
+                } else {
+                    println!("{} bytes", size);
+                }
+            }
+        }
+        Err(_) => {
+            print_colored!(Color::LightRed, Color::Black, "Error: ");
+            println!("Path '{}' not found", if path.is_empty() { "." } else { path });
+        }
     }
 }
 
