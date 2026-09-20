@@ -1,19 +1,17 @@
-use crate::vga::{self, Color};
 use crate::shell::{
-    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_CTRL_LEFT, KEY_CTRL_RIGHT,
-    KEY_HOME, KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN,
-    KEY_BACKSPACE, KEY_DEL_CHAR, KEY_DELETE, KEY_ALT_DELETE, KEY_ALT_BACKSPACE,
-    KEY_ENTER, KEY_RETURN,
-    KEY_CTRL_S, KEY_CTRL_Q,
-    KEY_CTRL_A, KEY_CTRL_E, KEY_CTRL_K,
+    KEY_ALT_BACKSPACE, KEY_ALT_DELETE, KEY_BACKSPACE, KEY_CTRL_A, KEY_CTRL_E, KEY_CTRL_K,
+    KEY_CTRL_LEFT, KEY_CTRL_Q, KEY_CTRL_RIGHT, KEY_CTRL_S, KEY_DELETE, KEY_DEL_CHAR, KEY_DOWN,
+    KEY_END, KEY_ENTER, KEY_HOME, KEY_LEFT, KEY_PAGE_DOWN, KEY_PAGE_UP, KEY_RETURN, KEY_RIGHT,
+    KEY_SHIFT_END, KEY_SHIFT_HOME, KEY_SHIFT_LEFT, KEY_SHIFT_RIGHT, KEY_UP,
 };
-use alloc::vec::Vec;
+use crate::vga::{self, Color};
 use alloc::string::String;
+use alloc::vec::Vec;
 
-const EDITOR_ROWS: usize = 23;  // VGA rows available for text (0..22)
-const EDITOR_COLS: usize = 80;  // VGA width
-const STATUS_ROW: usize = 24;   // Bottom status bar row (VGA row 24)
-const MAX_LINES: usize = 512;   // Maximum buffer lines
+const EDITOR_ROWS: usize = 23; // VGA rows available for text (0..22)
+const EDITOR_COLS: usize = 80; // VGA width
+const STATUS_ROW: usize = 24; // Bottom status bar row (VGA row 24)
+const MAX_LINES: usize = 512; // Maximum buffer lines
 
 extern "C" {
     fn keyboard_getchar() -> u16;
@@ -33,6 +31,8 @@ pub struct Editor {
     filename: String,
     /// Whether the buffer has been modified since last save
     modified: bool,
+    /// Fixed endpoint for an active Shift-based selection
+    selection_anchor: Option<(usize, usize)>,
 }
 
 impl Editor {
@@ -69,6 +69,7 @@ impl Editor {
             scroll_row: 0,
             filename: String::from(filename),
             modified: false,
+            selection_anchor: None,
         }
     }
 
@@ -109,10 +110,19 @@ impl Editor {
 
         let text_color = vga::make_color(Color::White, Color::Black);
         let bg_color = vga::make_color(Color::LightGray, Color::Black);
+        let selected_color = vga::make_color(Color::Black, Color::LightGray);
 
         for col in 0..EDITOR_COLS {
             let ch = if col < line.len() { line[col] } else { b' ' };
-            let color = if col < line.len() { text_color } else { bg_color };
+            let color = if col < line.len() {
+                if self.selection_contains(buf_row, col) {
+                    selected_color
+                } else {
+                    text_color
+                }
+            } else {
+                bg_color
+            };
             vga::putchar_at(ch, color, col, screen_row);
         }
     }
@@ -135,7 +145,9 @@ impl Editor {
 
         // Filename
         for b in self.filename.bytes() {
-            if col >= 40 { break; }
+            if col >= 40 {
+                break;
+            }
             vga::putchar_at(b, bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
@@ -144,8 +156,14 @@ impl Editor {
         if self.modified {
             let marker = b" [Modified]";
             for &b in marker {
-                if col >= 50 { break; }
-                let c = if b == b'[' || b == b']' { bar_color } else { mod_color };
+                if col >= 50 {
+                    break;
+                }
+                let c = if b == b'[' || b == b']' {
+                    bar_color
+                } else {
+                    mod_color
+                };
                 vga::putchar_at(b, c, col, STATUS_ROW - 1);
                 col += 1;
             }
@@ -189,7 +207,9 @@ impl Editor {
         // "Col:"
         let col_label = b"Col:";
         for &b in col_label {
-            if pcol < hint_start { vga::putchar_at(b, bar_color, pcol, STATUS_ROW - 1); }
+            if pcol < hint_start {
+                vga::putchar_at(b, bar_color, pcol, STATUS_ROW - 1);
+            }
             pcol += 1;
         }
         let _ = write_number_at(col_display, pcol, STATUS_ROW - 1, bar_color);
@@ -219,7 +239,78 @@ impl Editor {
     // Cursor movement
     // -----------------------------------------------------------------------
 
+    fn clear_selection(&mut self) {
+        self.selection_anchor = None;
+    }
+
+    fn begin_selection(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some((self.cursor_row, self.cursor_col));
+        }
+    }
+
+    fn selection_bounds(&self) -> Option<((usize, usize), (usize, usize))> {
+        let anchor = self.selection_anchor?;
+        if anchor == (self.cursor_row, self.cursor_col) {
+            return None;
+        }
+        if anchor.0 < self.cursor_row || (anchor.0 == self.cursor_row && anchor.1 < self.cursor_col)
+        {
+            Some((anchor, (self.cursor_row, self.cursor_col)))
+        } else {
+            Some(((self.cursor_row, self.cursor_col), anchor))
+        }
+    }
+
+    fn selection_contains(&self, row: usize, col: usize) -> bool {
+        let Some(((start_row, start_col), (end_row, end_col))) = self.selection_bounds() else {
+            return false;
+        };
+        (row > start_row || (row == start_row && col >= start_col))
+            && (row < end_row || (row == end_row && col < end_col))
+    }
+
+    fn extend_left(&mut self) {
+        self.begin_selection();
+        self.move_left_without_clearing();
+    }
+
+    fn extend_right(&mut self) {
+        self.begin_selection();
+        self.move_right_without_clearing();
+    }
+
+    fn extend_home(&mut self) {
+        self.begin_selection();
+        self.cursor_col = 0;
+    }
+
+    fn extend_end(&mut self) {
+        self.begin_selection();
+        self.cursor_col = self.lines[self.cursor_row].len();
+    }
+
+    fn move_left_without_clearing(&mut self) {
+        if self.cursor_col > 0 {
+            self.cursor_col -= 1;
+        } else if self.cursor_row > 0 {
+            self.cursor_row -= 1;
+            self.cursor_col = self.lines[self.cursor_row].len();
+        }
+    }
+
+    fn move_right_without_clearing(&mut self) {
+        let line_len = self.lines[self.cursor_row].len();
+        if self.cursor_col < line_len {
+            self.cursor_col += 1;
+        } else if self.cursor_row + 1 < self.lines.len() {
+            self.cursor_row += 1;
+            self.cursor_col = 0;
+        }
+    }
+
     fn move_up(&mut self) {
+        self.clear_selection();
         if self.cursor_row > 0 {
             self.cursor_row -= 1;
             let line_len = self.lines[self.cursor_row].len();
@@ -230,6 +321,7 @@ impl Editor {
     }
 
     fn move_down(&mut self) {
+        self.clear_selection();
         if self.cursor_row + 1 < self.lines.len() {
             self.cursor_row += 1;
             let line_len = self.lines[self.cursor_row].len();
@@ -240,27 +332,17 @@ impl Editor {
     }
 
     fn move_left(&mut self) {
-        if self.cursor_col > 0 {
-            self.cursor_col -= 1;
-        } else if self.cursor_row > 0 {
-            // Wrap to end of previous line
-            self.cursor_row -= 1;
-            self.cursor_col = self.lines[self.cursor_row].len();
-        }
+        self.clear_selection();
+        self.move_left_without_clearing();
     }
 
     fn move_right(&mut self) {
-        let line_len = self.lines[self.cursor_row].len();
-        if self.cursor_col < line_len {
-            self.cursor_col += 1;
-        } else if self.cursor_row + 1 < self.lines.len() {
-            // Wrap to beginning of next line
-            self.cursor_row += 1;
-            self.cursor_col = 0;
-        }
+        self.clear_selection();
+        self.move_right_without_clearing();
     }
 
     fn move_word_left(&mut self) {
+        self.clear_selection();
         let line = &self.lines[self.cursor_row];
         while self.cursor_col > 0 && line[self.cursor_col - 1] == b' ' {
             self.cursor_col -= 1;
@@ -271,6 +353,7 @@ impl Editor {
     }
 
     fn move_word_right(&mut self) {
+        self.clear_selection();
         let line_len = self.lines[self.cursor_row].len();
         while self.cursor_col < line_len && self.lines[self.cursor_row][self.cursor_col] != b' ' {
             self.cursor_col += 1;
@@ -281,14 +364,17 @@ impl Editor {
     }
 
     fn move_home(&mut self) {
+        self.clear_selection();
         self.cursor_col = 0;
     }
 
     fn move_end(&mut self) {
+        self.clear_selection();
         self.cursor_col = self.lines[self.cursor_row].len();
     }
 
     fn page_up(&mut self) {
+        self.clear_selection();
         let rows = EDITOR_ROWS;
         if self.cursor_row >= rows {
             self.cursor_row -= rows;
@@ -307,6 +393,7 @@ impl Editor {
     }
 
     fn page_down(&mut self) {
+        self.clear_selection();
         let rows = EDITOR_ROWS;
         let last = self.lines.len().saturating_sub(1);
         self.cursor_row = (self.cursor_row + rows).min(last);
@@ -321,13 +408,39 @@ impl Editor {
     // Editing operations
     // -----------------------------------------------------------------------
 
+    fn delete_selection(&mut self) -> bool {
+        let Some(((start_row, start_col), (end_row, end_col))) = self.selection_bounds() else {
+            self.clear_selection();
+            return false;
+        };
+
+        if start_row == end_row {
+            self.lines[start_row].drain(start_col..end_col);
+        } else {
+            let suffix = self.lines[end_row][end_col..].to_vec();
+            self.lines[start_row].truncate(start_col);
+            self.lines[start_row].extend_from_slice(&suffix);
+            self.lines.drain((start_row + 1)..=end_row);
+        }
+        self.cursor_row = start_row;
+        self.cursor_col = start_col;
+        self.clear_selection();
+        self.modified = true;
+        true
+    }
+
     /// Insert a printable character at the current cursor position.
     fn insert_char(&mut self, c: u8) {
+        self.delete_selection();
         // Prevent unreasonable line growth
         let line_len = self.lines[self.cursor_row].len();
-        if line_len >= EDITOR_COLS * 4 { return; }
+        if line_len >= EDITOR_COLS * 4 {
+            return;
+        }
         // Prevent too many lines
-        if self.lines.len() >= MAX_LINES { return; }
+        if self.lines.len() >= MAX_LINES {
+            return;
+        }
         self.lines[self.cursor_row].insert(self.cursor_col, c);
         self.cursor_col += 1;
         self.modified = true;
@@ -335,7 +448,10 @@ impl Editor {
 
     /// Insert a newline: split current line at cursor.
     fn insert_newline(&mut self) {
-        if self.lines.len() >= MAX_LINES { return; }
+        self.delete_selection();
+        if self.lines.len() >= MAX_LINES {
+            return;
+        }
         let rest: Vec<u8> = self.lines[self.cursor_row].split_off(self.cursor_col);
         self.cursor_row += 1;
         self.lines.insert(self.cursor_row, rest);
@@ -345,6 +461,9 @@ impl Editor {
 
     /// Delete character before cursor (Backspace).
     fn backspace(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
         if self.cursor_col > 0 {
             self.lines[self.cursor_row].remove(self.cursor_col - 1);
             self.cursor_col -= 1;
@@ -361,6 +480,9 @@ impl Editor {
 
     /// Delete character at cursor (Delete key).
     fn delete_char(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
         let line_len = self.lines[self.cursor_row].len();
         if self.cursor_col < line_len {
             self.lines[self.cursor_row].remove(self.cursor_col);
@@ -375,6 +497,9 @@ impl Editor {
 
     /// Delete the next word (Alt+Delete).
     fn delete_word_forward(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
         let line_len = self.lines[self.cursor_row].len();
         if self.cursor_col >= line_len {
             return;
@@ -393,6 +518,9 @@ impl Editor {
 
     /// Delete the previous word (Alt+Backspace).
     fn delete_word_backward(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
         if self.cursor_col == 0 {
             return;
         }
@@ -409,6 +537,9 @@ impl Editor {
 
     /// Kill line from cursor to end (Ctrl+K).
     fn kill_to_end(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
         let line_len = self.lines[self.cursor_row].len();
         if self.cursor_col < line_len {
             self.lines[self.cursor_row].truncate(self.cursor_col);
@@ -450,7 +581,9 @@ impl Editor {
         let bar_color = vga::make_color(color, Color::Black);
         let mut col = 0;
         for b in msg.bytes() {
-            if col >= EDITOR_COLS { break; }
+            if col >= EDITOR_COLS {
+                break;
+            }
             vga::putchar_at(b, bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
@@ -471,7 +604,9 @@ impl Editor {
         let msg = b"Unsaved changes! Quit anyway? (y/n): ";
         let mut col = 0;
         for &b in msg {
-            if col >= EDITOR_COLS { break; }
+            if col >= EDITOR_COLS {
+                break;
+            }
             vga::putchar_at(b, bar_color, col, STATUS_ROW - 1);
             col += 1;
         }
@@ -506,27 +641,73 @@ impl Editor {
 
             match key {
                 // Navigation
-                KEY_UP         => { self.move_up();    }
-                KEY_DOWN       => { self.move_down();  }
-                KEY_LEFT       => { self.move_left();  }
-                KEY_RIGHT      => { self.move_right(); }
-                KEY_CTRL_LEFT  => { self.move_word_left(); }
-                KEY_CTRL_RIGHT => { self.move_word_right(); }
-                KEY_HOME | KEY_CTRL_A => { self.move_home(); }
-                KEY_END  | KEY_CTRL_E => { self.move_end(); }
-                KEY_PAGE_UP    => { self.page_up();    }
-                KEY_PAGE_DOWN  => { self.page_down();  }
+                KEY_UP => {
+                    self.move_up();
+                }
+                KEY_DOWN => {
+                    self.move_down();
+                }
+                KEY_LEFT => {
+                    self.move_left();
+                }
+                KEY_RIGHT => {
+                    self.move_right();
+                }
+                KEY_SHIFT_LEFT => {
+                    self.extend_left();
+                }
+                KEY_SHIFT_RIGHT => {
+                    self.extend_right();
+                }
+                KEY_SHIFT_HOME => {
+                    self.extend_home();
+                }
+                KEY_SHIFT_END => {
+                    self.extend_end();
+                }
+                KEY_CTRL_LEFT => {
+                    self.move_word_left();
+                }
+                KEY_CTRL_RIGHT => {
+                    self.move_word_right();
+                }
+                KEY_HOME | KEY_CTRL_A => {
+                    self.move_home();
+                }
+                KEY_END | KEY_CTRL_E => {
+                    self.move_end();
+                }
+                KEY_PAGE_UP => {
+                    self.page_up();
+                }
+                KEY_PAGE_DOWN => {
+                    self.page_down();
+                }
 
                 // Editing
-                KEY_ENTER | KEY_RETURN => { self.insert_newline(); }
-                KEY_BACKSPACE | KEY_DEL_CHAR => { self.backspace(); }
-                KEY_DELETE => { self.delete_char(); }
-                KEY_ALT_DELETE => { self.delete_word_forward(); }
-                KEY_ALT_BACKSPACE => { self.delete_word_backward(); }
-                KEY_CTRL_K => { self.kill_to_end(); }
+                KEY_ENTER | KEY_RETURN => {
+                    self.insert_newline();
+                }
+                KEY_BACKSPACE | KEY_DEL_CHAR => {
+                    self.backspace();
+                }
+                KEY_DELETE => {
+                    self.delete_char();
+                }
+                KEY_ALT_DELETE => {
+                    self.delete_word_forward();
+                }
+                KEY_ALT_BACKSPACE => {
+                    self.delete_word_backward();
+                }
+                KEY_CTRL_K => {
+                    self.kill_to_end();
+                }
 
                 // Save
-                KEY_CTRL_S => { self.save(); }
+                KEY_CTRL_S => {
+                    self.save();
+                }
 
                 // Quit
                 KEY_CTRL_Q => {
