@@ -1,3 +1,4 @@
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
@@ -87,6 +88,39 @@ fn parent_path(path: &str) -> &str {
     match path.rfind('/') {
         Some(0) | None => "/",
         Some(index) => &path[..index],
+    }
+}
+
+fn base_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn destination_path(fs: &RamFs, source: &str, destination: &str) -> Option<String> {
+    let path = normalize_path(&fs.current_dir, destination)?;
+    if find_inode(fs, &path)
+        .map(|inode| inode.inode_type == InodeType::Directory)
+        .unwrap_or(false)
+    {
+        if path == "/" {
+            Some(format_path(path.as_str(), base_name(source)))
+        } else {
+            Some(format_path(path.as_str(), base_name(source)))
+        }
+    } else {
+        Some(path)
+    }
+}
+
+fn format_path(directory: &str, name: &str) -> String {
+    if directory == "/" {
+        let mut path = String::from("/");
+        path.push_str(name);
+        path
+    } else {
+        let mut path = String::from(directory);
+        path.push('/');
+        path.push_str(name);
+        path
     }
 }
 
@@ -223,6 +257,103 @@ pub fn read_file(name: &str) -> Option<Vec<u8>> {
             return None;
         }
         Some(inode.data.clone())
+    }
+}
+
+pub fn remove_file(name: &str) -> Result<(), i32> {
+    unsafe {
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let path = normalize_path(&fs.current_dir, name).ok_or(-2)?;
+        let Some(index) = fs.files.iter().position(|inode| inode.name == path) else {
+            return Err(-2);
+        };
+        if fs.files[index].inode_type != InodeType::File {
+            return Err(-21);
+        }
+        fs.files.remove(index);
+        Ok(())
+    }
+}
+
+pub fn remove_dir(name: &str) -> Result<(), i32> {
+    unsafe {
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let path = normalize_path(&fs.current_dir, name).ok_or(-2)?;
+        if path == "/" || !has_directory(fs, &path) {
+            return Err(-2);
+        }
+        if fs.current_dir == path || fs.current_dir.starts_with(&format!("{}/", path)) {
+            return Err(-16);
+        }
+        let prefix = format!("{}/", path);
+        if fs.files.iter().any(|inode| inode.name.starts_with(&prefix)) {
+            return Err(-39);
+        }
+        let Some(index) = fs.files.iter().position(|inode| inode.name == path) else {
+            return Err(-2);
+        };
+        fs.files.remove(index);
+        Ok(())
+    }
+}
+
+pub fn copy_file(source: &str, destination: &str) -> Result<(), i32> {
+    unsafe {
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let source_path = normalize_path(&fs.current_dir, source).ok_or(-2)?;
+        let destination_path = destination_path(fs, &source_path, destination).ok_or(-22)?;
+        let Some(source_inode) = find_inode(fs, &source_path) else {
+            return Err(-2);
+        };
+        if source_inode.inode_type != InodeType::File {
+            return Err(-21);
+        }
+        if find_inode(fs, &destination_path).is_some() {
+            return Err(-17);
+        }
+        if !has_directory(fs, parent_path(&destination_path)) {
+            return Err(-2);
+        }
+        fs.files.push(MemoryInode {
+            name: destination_path,
+            inode_type: InodeType::File,
+            data: source_inode.data.clone(),
+        });
+        Ok(())
+    }
+}
+
+pub fn move_file(source: &str, destination: &str) -> Result<(), i32> {
+    unsafe {
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let source_path = normalize_path(&fs.current_dir, source).ok_or(-2)?;
+        let destination_path = destination_path(fs, &source_path, destination).ok_or(-22)?;
+        let Some(source_index) = fs.files.iter().position(|inode| inode.name == source_path) else {
+            return Err(-2);
+        };
+        if fs.files[source_index].inode_type != InodeType::File {
+            return Err(-21);
+        }
+        if find_inode(fs, &destination_path).is_some() {
+            return Err(-17);
+        }
+        if !has_directory(fs, parent_path(&destination_path)) {
+            return Err(-2);
+        }
+        fs.files[source_index].name = destination_path;
+        Ok(())
+    }
+}
+
+pub fn stat(path: &str) -> Option<(String, InodeType, usize)> {
+    unsafe {
+        let fs = (*RAMFS.0.get()).as_ref()?;
+        let target = normalize_path(&fs.current_dir, path).unwrap_or_else(|| String::from("/"));
+        if target == "/" {
+            return Some((target, InodeType::Directory, 0));
+        }
+        let inode = find_inode(fs, &target)?;
+        Some((inode.name.clone(), inode.inode_type, inode.get_size()))
     }
 }
 
