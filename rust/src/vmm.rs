@@ -1,24 +1,20 @@
-// ==============================================================================
 // Nyxara OS - Virtual Memory Manager (VMM) & x86 Paging
 // Two-level Paging (Page Directory & Page Tables) with ISR 14 Page Fault Handler
-// ==============================================================================
 
 use crate::syscall::{isr_register_handler, Registers};
 use crate::vga::{self, Color};
 
-// ------------------------------------------------------------------------------
 // Paging Entry Flags (x86 Standard)
-// ------------------------------------------------------------------------------
-pub const PAGE_PRESENT: u32       = 1 << 0; // Page is currently loaded in memory
-pub const PAGE_WRITABLE: u32      = 1 << 1; // 1 = Read/Write, 0 = Read-Only
-pub const PAGE_USER: u32          = 1 << 2; // 1 = User mode (Ring 3), 0 = Supervisor (Ring 0)
-pub const PAGE_WRITETHROUGH: u32  = 1 << 3; // 1 = Write-through caching
-pub const PAGE_NOCACHE: u32       = 1 << 4; // 1 = Cache disabled
-pub const PAGE_ACCESSED: u32      = 1 << 5; // 1 = CPU has accessed this page
-pub const PAGE_DIRTY: u32         = 1 << 6; // 1 = CPU has written to this page
-pub const PAGE_FRAME_MASK: u32    = 0xFFFFF000; // Physical frame address (4KB aligned)
+pub const PAGE_PRESENT: u32 = 1 << 0; // Page is currently loaded in memory
+pub const PAGE_WRITABLE: u32 = 1 << 1; // 1 = Read/Write, 0 = Read-Only
+pub const PAGE_USER: u32 = 1 << 2; // 1 = User mode (Ring 3), 0 = Supervisor (Ring 0)
+pub const PAGE_WRITETHROUGH: u32 = 1 << 3; // 1 = Write-through caching
+pub const PAGE_NOCACHE: u32 = 1 << 4; // 1 = Cache disabled
+pub const PAGE_ACCESSED: u32 = 1 << 5; // 1 = CPU has accessed this page
+pub const PAGE_DIRTY: u32 = 1 << 6; // 1 = CPU has written to this page
+pub const PAGE_FRAME_MASK: u32 = 0xFFFFF000; // Physical frame address (4KB aligned)
 
-pub const PAGE_SIZE: usize        = 4096;
+pub const PAGE_SIZE: usize = 4096;
 pub const ENTRIES_PER_TABLE: usize = 1024;
 
 // Total memory identity mapped on boot: 64 MB (16 tables * 4MB per table)
@@ -27,7 +23,7 @@ pub const IDENTITY_MAPPED_SIZE: usize = NUM_IDENTITY_TABLES * ENTRIES_PER_TABLE 
 
 // Dedicated Demand Paging Range: 0xC0000000 to 0xC1000000 (16 MB)
 pub const DEMAND_PAGING_START: usize = 0xC0000000;
-pub const DEMAND_PAGING_END: usize   = 0xC1000000;
+pub const DEMAND_PAGING_END: usize = 0xC1000000;
 
 // ------------------------------------------------------------------------------
 // Page Directory and Page Table Structures (Aligned to 4096 bytes)
@@ -45,8 +41,8 @@ pub struct PageDirectory {
 }
 
 // Page Directory and Page Tables located in extended memory (1 MB+ safe DRAM)
-pub const PAGE_DIR_PHYS: usize     = 0x00100000; // 4 KB Page Directory
-pub const LFB_TABLE_PHYS: usize    = 0x00101000; // 4 KB LFB Page Table
+pub const PAGE_DIR_PHYS: usize = 0x00100000; // 4 KB Page Directory
+pub const LFB_TABLE_PHYS: usize = 0x00101000; // 4 KB LFB Page Table
 pub const IDENT_TABLES_PHYS: usize = 0x00110000; // 64 KB (16 Page Tables)
 
 #[inline]
@@ -135,7 +131,11 @@ pub fn init() {
         // Zero out the page directory, identity tables, and LFB table in extended memory
         core::ptr::write_bytes(PAGE_DIR_PHYS as *mut u8, 0, PAGE_SIZE);
         core::ptr::write_bytes(LFB_TABLE_PHYS as *mut u8, 0, PAGE_SIZE);
-        core::ptr::write_bytes(IDENT_TABLES_PHYS as *mut u8, 0, NUM_IDENTITY_TABLES * PAGE_SIZE);
+        core::ptr::write_bytes(
+            IDENT_TABLES_PHYS as *mut u8,
+            0,
+            NUM_IDENTITY_TABLES * PAGE_SIZE,
+        );
 
         let pd = get_page_directory();
         let ident_tables = &mut *(IDENT_TABLES_PHYS as *mut [PageTable; NUM_IDENTITY_TABLES]);
@@ -185,7 +185,10 @@ pub fn init() {
 
         // 3. Load CR3 with Page Directory physical address
         load_cr3(PAGE_DIR_PHYS);
-        crate::logln!("[VMM] Page Directory loaded into CR3 at 0x{:08X}", PAGE_DIR_PHYS);
+        crate::logln!(
+            "[VMM] Page Directory loaded into CR3 at 0x{:08X}",
+            PAGE_DIR_PHYS
+        );
 
         // 4. Enable Paging (PG bit 31) and Write Protect (WP bit 16) in CR0
         let mut cr0: u32;
@@ -197,7 +200,9 @@ pub fn init() {
         PAGING_ENABLED = true;
     }
 
-    crate::logln!("[VMM] x86 Paging successfully enabled (64MB Identity Mapped, CR0.PG=1, CR0.WP=1).");
+    crate::logln!(
+        "[VMM] x86 Paging successfully enabled (64MB Identity Mapped, CR0.PG=1, CR0.WP=1)."
+    );
 }
 
 // ------------------------------------------------------------------------------
@@ -223,7 +228,8 @@ pub fn map_page(virt_addr: usize, phys_addr: usize, flags: u32) -> Result<(), &'
             core::ptr::write_bytes(new_table_frame as *mut u8, 0, PAGE_SIZE);
 
             // Set PDE
-            let pde_val = (new_table_frame as u32) | PAGE_PRESENT | PAGE_WRITABLE | (flags & PAGE_USER);
+            let pde_val =
+                (new_table_frame as u32) | PAGE_PRESENT | PAGE_WRITABLE | (flags & PAGE_USER);
             pd.entries[pd_idx] = pde_val;
             new_table_frame
         } else {
@@ -317,10 +323,10 @@ extern "C" fn page_fault_handler(regs: &mut Registers) {
     let err = regs.err_code;
 
     let present = (err & 0x01) != 0; // 0: page not present, 1: protection violation
-    let write   = (err & 0x02) != 0; // 0: read access, 1: write access
-    let user    = (err & 0x04) != 0; // 0: supervisor (Ring 0), 1: user (Ring 3)
-    let rsvd    = (err & 0x08) != 0; // 1: reserved bit set in page table entry
-    let ifetch  = (err & 0x10) != 0; // 1: instruction fetch
+    let write = (err & 0x02) != 0; // 0: read access, 1: write access
+    let user = (err & 0x04) != 0; // 0: supervisor (Ring 0), 1: user (Ring 3)
+    let rsvd = (err & 0x08) != 0; // 1: reserved bit set in page table entry
+    let ifetch = (err & 0x10) != 0; // 1: instruction fetch
 
     // --------------------------------------------------------------------------
     // Demand Paging Zone (0xC0000000 - 0xC1000000)
@@ -373,9 +379,26 @@ extern "C" fn page_fault_handler(regs: &mut Registers) {
 
     vga::set_color(Color::LightGray, Color::Red);
     crate::println!(" Breakdown:");
-    crate::println!("   - Condition : {}", if present { "Page-Level Protection Violation" } else { "Page Not Present (Unmapped/Null)" });
-    crate::println!("   - Operation : {}", if write { "Write Access" } else { "Read Access" });
-    crate::println!("   - Mode      : {}", if user { "User Mode (Ring 3)" } else { "Kernel Mode (Ring 0 / Supervisor)" });
+    crate::println!(
+        "   - Condition : {}",
+        if present {
+            "Page-Level Protection Violation"
+        } else {
+            "Page Not Present (Unmapped/Null)"
+        }
+    );
+    crate::println!(
+        "   - Operation : {}",
+        if write { "Write Access" } else { "Read Access" }
+    );
+    crate::println!(
+        "   - Mode      : {}",
+        if user {
+            "User Mode (Ring 3)"
+        } else {
+            "Kernel Mode (Ring 0 / Supervisor)"
+        }
+    );
     if rsvd {
         crate::println!("   - Reserved  : Reserved bit set in page table entry!");
     }
@@ -384,14 +407,31 @@ extern "C" fn page_fault_handler(regs: &mut Registers) {
     }
 
     vga::set_color(Color::LightCyan, Color::Red);
-    crate::println!(" Registers: EAX=0x{:08X} EBX=0x{:08X} ECX=0x{:08X} EDX=0x{:08X}", regs.eax, regs.ebx, regs.ecx, regs.edx);
-    crate::println!("            ESP=0x{:08X} EBP=0x{:08X} ESI=0x{:08X} EDI=0x{:08X}", regs.esp, regs.ebp, regs.esi, regs.edi);
+    crate::println!(
+        " Registers: EAX=0x{:08X} EBX=0x{:08X} ECX=0x{:08X} EDX=0x{:08X}",
+        regs.eax,
+        regs.ebx,
+        regs.ecx,
+        regs.edx
+    );
+    crate::println!(
+        "            ESP=0x{:08X} EBP=0x{:08X} ESI=0x{:08X} EDI=0x{:08X}",
+        regs.esp,
+        regs.ebp,
+        regs.esi,
+        regs.edi
+    );
 
     vga::set_color(Color::White, Color::Red);
     crate::println!("\n System halted for security. Please reboot or inspect memory.");
     crate::println!("========================================================");
 
-    crate::logln!("[CRITICAL] Page Fault Panic! CR2=0x{:08X}, EIP=0x{:08X}, ErrCode=0x{:08X}", fault_addr, regs.eip, err);
+    crate::logln!(
+        "[CRITICAL] Page Fault Panic! CR2=0x{:08X}, EIP=0x{:08X}, ErrCode=0x{:08X}",
+        fault_addr,
+        regs.eip,
+        err
+    );
 
     loop {
         unsafe {
@@ -440,7 +480,11 @@ pub fn test_vmm() -> bool {
     // Read back value
     let read_back = unsafe { core::ptr::read_volatile(test_demand_addr) };
     if read_back != test_val {
-        crate::logln!("[VMM Test] Demand paging readback mismatch: got 0x{:08X}, expected 0x{:08X}", read_back, test_val);
+        crate::logln!(
+            "[VMM Test] Demand paging readback mismatch: got 0x{:08X}, expected 0x{:08X}",
+            read_back,
+            test_val
+        );
         return false;
     }
 
@@ -450,7 +494,10 @@ pub fn test_vmm() -> bool {
         crate::logln!("[VMM Test] Demand paging physical mapping resolution failed");
         return false;
     }
-    crate::logln!("[VMM Test] Step 2: Demand paging auto-allocation verified (phys=0x{:08X}).", after.unwrap());
+    crate::logln!(
+        "[VMM Test] Step 2: Demand paging auto-allocation verified (phys=0x{:08X}).",
+        after.unwrap()
+    );
 
     // Test 3: Manual page mapping & unmapping
     let custom_virt = 0xD0001000;
