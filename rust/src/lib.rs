@@ -3,21 +3,21 @@
 
 extern crate alloc;
 
-pub mod vga;
-pub mod serial;
+pub mod commands;
+pub mod editor;
 pub mod font;
 pub mod framebuffer;
-pub mod commands;
-pub mod shell;
-pub mod line_editor;
-pub mod pmm;
 pub mod heap;
+pub mod line_editor;
+pub mod mouse;
+pub mod net;
+pub mod pmm;
+pub mod serial;
+pub mod shell;
 pub mod syscall;
 pub mod vfs;
-pub mod net;
-pub mod editor;
+pub mod vga;
 pub mod vmm;
-pub mod mouse;
 
 use core::panic::PanicInfo;
 use vga::Color;
@@ -96,9 +96,13 @@ pub extern "C" fn nyxara_rust_main() -> ! {
     } else {
         mouse::set_bounds(80, 25);
     }
+    logln!("[Rust] Initializing syscall layer...");
     syscall::init();
+    logln!("[Rust] Initializing VFS...");
     vfs::init();
+    logln!("[Rust] Initializing network stack...");
     net::init();
+    logln!("[Rust] Core subsystems initialized.");
 
     print_colored!(
         Color::LightCyan,
@@ -115,12 +119,27 @@ pub extern "C" fn nyxara_rust_main() -> ! {
     "#
     );
 
-
-    print_colored!(Color::Yellow, Color::Black, " Nyxara Operating System - Unix-like Hybrid Architecture\n");
+    print_colored!(
+        Color::Yellow,
+        Color::Black,
+        " Nyxara Operating System - Unix-like Hybrid Architecture\n"
+    );
     println!(" -------------------------------------------------------------");
-    print_colored!(Color::LightGray, Color::Black, " * Low-Level HAL & Drivers : C / Assembly (NASM)\n");
-    print_colored!(Color::LightGray, Color::Black, " * Kernel Core & Shell     : Rust (no_std, alloc)\n");
-    print_colored!(Color::LightGray, Color::Black, " * Target Architecture     : x86 (32-bit Protected Mode)\n");
+    print_colored!(
+        Color::LightGray,
+        Color::Black,
+        " * Low-Level HAL & Drivers : C / Assembly (NASM)\n"
+    );
+    print_colored!(
+        Color::LightGray,
+        Color::Black,
+        " * Kernel Core & Shell     : Rust (no_std, alloc)\n"
+    );
+    print_colored!(
+        Color::LightGray,
+        Color::Black,
+        " * Target Architecture     : x86 (32-bit Protected Mode)\n"
+    );
     println!(" -------------------------------------------------------------\n");
 
     print_colored!(Color::LightGreen, Color::Black, "[OK] ");
