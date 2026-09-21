@@ -1,24 +1,24 @@
-use alloc::vec::Vec;
-use alloc::format;
-use core::cell::UnsafeCell;
 use crate::logln;
+use alloc::format;
+use alloc::vec::Vec;
+use core::cell::UnsafeCell;
 
-pub mod ethernet;
 pub mod arp;
-pub mod ipv4;
-pub mod icmp;
-pub mod udp;
 pub mod dhcp;
 pub mod dns;
-pub mod tcp;
+pub mod ethernet;
 pub mod http;
+pub mod icmp;
+pub mod ipv4;
+pub mod tcp;
+pub mod udp;
 
-pub use self::ethernet::{format_mac, MacAddress, BROADCAST_MAC, ETHERTYPE_ARP, ETHERTYPE_IPV4};
-pub use self::ipv4::{format_ip, parse_ip, Ipv4Address, PROTO_ICMP, PROTO_TCP, PROTO_UDP};
-pub use self::icmp::send_ping;
 pub use self::dhcp::{request_lease, DhcpLease};
 pub use self::dns::resolve as dns_resolve;
+pub use self::ethernet::{format_mac, MacAddress, BROADCAST_MAC, ETHERTYPE_ARP, ETHERTYPE_IPV4};
 pub use self::http::{fetch, handle_http_request};
+pub use self::icmp::send_ping;
+pub use self::ipv4::{format_ip, parse_ip, Ipv4Address, PROTO_ICMP, PROTO_TCP, PROTO_UDP};
 
 extern "C" {
     pub fn rtl8139_is_active() -> i32;
@@ -26,7 +26,12 @@ extern "C" {
     pub fn rtl8139_get_mac(mac_out: *mut u8) -> i32;
     pub fn rtl8139_send_packet(data: *const u8, len: u32) -> i32;
     pub fn rtl8139_receive_packet(buf: *mut u8, max_len: u32) -> i32;
-    pub fn rtl8139_get_stats(rx_pkts: *mut u32, tx_pkts: *mut u32, rx_bytes: *mut u32, tx_bytes: *mut u32);
+    pub fn rtl8139_get_stats(
+        rx_pkts: *mut u32,
+        tx_pkts: *mut u32,
+        rx_bytes: *mut u32,
+        tx_bytes: *mut u32,
+    );
     pub fn timer_get_uptime_ms() -> u32;
 }
 
@@ -75,7 +80,12 @@ pub fn update_config(ip: Ipv4Address, netmask: Ipv4Address, gateway: Ipv4Address
     }
 }
 
-pub fn update_config_all(ip: Ipv4Address, netmask: Ipv4Address, gateway: Ipv4Address, dns: Ipv4Address) {
+pub fn update_config_all(
+    ip: Ipv4Address,
+    netmask: Ipv4Address,
+    gateway: Ipv4Address,
+    dns: Ipv4Address,
+) {
     unsafe {
         if let Some(cfg) = (&mut *NET_STATE.0.get()).as_mut() {
             cfg.ip = ip;
@@ -88,29 +98,43 @@ pub fn update_config_all(ip: Ipv4Address, netmask: Ipv4Address, gateway: Ipv4Add
 }
 
 pub fn save_config_to_vfs(cfg: &NetConfig) {
+    logln!("[Nyxara Net] Formatting IP...");
+    let ip = format_ip(&cfg.ip);
+    logln!("[Nyxara Net] Formatting netmask...");
+    let netmask = format_ip(&cfg.netmask);
+    logln!("[Nyxara Net] Formatting gateway...");
+    let gateway = format_ip(&cfg.gateway);
+    logln!("[Nyxara Net] Formatting DNS...");
+    let dns = format_ip(&cfg.dns);
+    logln!("[Nyxara Net] Formatting MAC...");
+    let mac = format_mac(&cfg.mac);
+    logln!("[Nyxara Net] Formatting network configuration...");
     let content = format!(
         "INTERFACE=eth0\nIP={}\nNETMASK={}\nGATEWAY={}\nDNS={}\nMAC={}\n",
-        format_ip(&cfg.ip),
-        format_ip(&cfg.netmask),
-        format_ip(&cfg.gateway),
-        format_ip(&cfg.dns),
-        format_mac(&cfg.mac)
+        ip, netmask, gateway, dns, mac
     );
+    logln!("[Nyxara Net] Writing network.conf...");
     let _ = crate::vfs::write_file("/etc/network.conf", content.as_bytes());
 
+    logln!("[Nyxara Net] Formatting resolv.conf...");
     let resolv = format!("nameserver {}\n", format_ip(&cfg.dns));
+    logln!("[Nyxara Net] Writing resolv.conf...");
     let _ = crate::vfs::write_file("/etc/resolv.conf", resolv.as_bytes());
+    logln!("[Nyxara Net] Network configuration saved.");
 }
 
 pub fn init() {
+    logln!("[Nyxara Net] Checking RTL8139 status...");
     let mut mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
     let active = is_card_active();
 
     if active {
+        logln!("[Nyxara Net] Reading RTL8139 MAC...");
         unsafe {
             rtl8139_get_mac(mac.as_mut_ptr());
         }
     }
+    logln!("[Nyxara Net] Building default configuration...");
 
     let mut cfg = NetConfig {
         mac,
@@ -121,6 +145,7 @@ pub fn init() {
         is_up: active,
     };
 
+    logln!("[Nyxara Net] Loading network configuration...");
     if let Some(data) = crate::vfs::read_file("/etc/network.conf") {
         if let Ok(text) = core::str::from_utf8(&data) {
             for line in text.lines() {
@@ -129,21 +154,41 @@ pub fn init() {
                     let key = parts[0].trim();
                     let val = parts[1].trim();
                     match key {
-                        "IP" => if let Some(ip) = parse_ip(val) { cfg.ip = ip; },
-                        "NETMASK" => if let Some(m) = parse_ip(val) { cfg.netmask = m; },
-                        "GATEWAY" => if let Some(gw) = parse_ip(val) { cfg.gateway = gw; },
-                        "DNS" => if let Some(dns) = parse_ip(val) { cfg.dns = dns; },
+                        "IP" => {
+                            if let Some(ip) = parse_ip(val) {
+                                cfg.ip = ip;
+                            }
+                        }
+                        "NETMASK" => {
+                            if let Some(m) = parse_ip(val) {
+                                cfg.netmask = m;
+                            }
+                        }
+                        "GATEWAY" => {
+                            if let Some(gw) = parse_ip(val) {
+                                cfg.gateway = gw;
+                            }
+                        }
+                        "DNS" => {
+                            if let Some(dns) = parse_ip(val) {
+                                cfg.dns = dns;
+                            }
+                        }
                         _ => {}
                     }
                 }
             }
         }
     } else {
+        logln!("[Nyxara Net] Saving default configuration...");
         save_config_to_vfs(&cfg);
     }
 
-    logln!("[Nyxara Net] Initialized modern network stack on eth0 (MAC: {}, IP: {})",
-        format_mac(&cfg.mac), format_ip(&cfg.ip));
+    logln!(
+        "[Nyxara Net] Initialized modern network stack on eth0 (MAC: {}, IP: {})",
+        format_mac(&cfg.mac),
+        format_ip(&cfg.ip)
+    );
 
     unsafe {
         *NET_STATE.0.get() = Some(cfg);
