@@ -37,10 +37,20 @@ pub fn handle_command(cmd: &str) {
     let command = parts.next().unwrap_or("");
     let args = parts.next().unwrap_or("");
 
+    let (command, args) = if command == "sudo" {
+        let trimmed_args = args.trim_start();
+        let mut sub_parts = trimmed_args.splitn(2, ' ');
+        let sub_cmd = sub_parts.next().unwrap_or("");
+        let sub_args = sub_parts.next().unwrap_or("");
+        (sub_cmd, sub_args)
+    } else {
+        (command, args)
+    };
+
     match command {
         "help" => cmd_help(),
         "clear" => cmd_clear(),
-        "about" => cmd_about(),
+        "about" | "version" => cmd_about(),
         "sysinfo" => cmd_sysinfo(),
         "free" | "meminfo" => cmd_free(),
         "uptime" => cmd_uptime(),
@@ -78,6 +88,25 @@ pub fn handle_command(cmd: &str) {
         "lalaufetch" => cmd_lalaufetch(),
         "mouse"    => cmd_mouse(args),
         "paint"    => cmd_paint(),
+        "uname" => {
+            if args.trim().contains("-a") {
+                println!("NyxaraOS 2.0.0-hybrid #1 SMP i686 GNU/Linux-compat Nyxara");
+            } else {
+                println!("NyxaraOS");
+            }
+        }
+        "whoami" => println!("root"),
+        "hostname" => println!("nyxara"),
+        "motd" => {
+            if let Some(data) = crate::vfs::read_file("/motd") {
+                if let Ok(s) = core::str::from_utf8(&data) {
+                    print!("{}", s);
+                }
+            }
+        }
+        "exit" | "quit" => {
+            println!("Nyxara shell is the root kernel process and cannot exit. Type 'reboot' to restart.");
+        }
         _ => {
             print_colored!(Color::LightRed, Color::Black, "Error: ");
             println!("Unknown command '{}'. Type 'help' for available commands.", command);
@@ -146,7 +175,7 @@ fn cmd_pwd() {
 
 fn cmd_cd(args: &str) {
     let path = args.trim();
-    let target = if path.is_empty() { "/" } else { path };
+    let target = if path.is_empty() || path == "~" { "/" } else { path };
     if crate::vfs::change_dir(target).is_err() {
         print_colored!(Color::LightRed, Color::Black, "Error: ");
         println!("Directory '{}' not found", target);
@@ -154,15 +183,30 @@ fn cmd_cd(args: &str) {
 }
 
 fn cmd_mkdir(args: &str) {
-    let path = args.trim();
-    if path.is_empty() {
+    let trimmed = args.trim();
+    let (is_p, dir_path) = if trimmed.starts_with("-p ") {
+        (true, trimmed[3..].trim())
+    } else if trimmed == "-p" {
+        (true, "")
+    } else {
+        (false, trimmed)
+    };
+
+    if dir_path.is_empty() {
         print_colored!(Color::LightRed, Color::Black, "Usage: ");
-        println!("mkdir <directory>");
+        println!("mkdir [-p] <directory>");
         return;
     }
-    if crate::vfs::make_dir(path).is_err() {
+
+    let res = if is_p {
+        crate::vfs::make_dir_p(dir_path)
+    } else {
+        crate::vfs::make_dir(dir_path)
+    };
+
+    if res.is_err() {
         print_colored!(Color::LightRed, Color::Black, "Error: ");
-        println!("Failed to create directory '{}'", path);
+        println!("Failed to create directory '{}'", dir_path);
     }
 }
 
@@ -228,12 +272,8 @@ fn cmd_mv(args: &str) {
 
 fn cmd_stat(args: &str) {
     let path = args.trim();
-    if path.is_empty() {
-        print_colored!(Color::LightRed, Color::Black, "Usage: ");
-        println!("stat <path>");
-        return;
-    }
-    match crate::vfs::stat(path) {
+    let target = if path.is_empty() { "." } else { path };
+    match crate::vfs::stat(target) {
         Some((name, kind, size)) => {
             println!("Path : {}", name);
             println!("Type : {:?}", kind);
@@ -241,16 +281,23 @@ fn cmd_stat(args: &str) {
         }
         None => {
             print_colored!(Color::LightRed, Color::Black, "Error: ");
-            println!("Path '{}' not found", path);
+            println!("Path '{}' not found", target);
         }
     }
 }
 
 fn cmd_ls(args: &str) {
-    let path = args.trim();
-    match crate::vfs::list_dir(path) {
+    let mut target_path = "";
+    for part in args.split_whitespace() {
+        if !part.starts_with('-') {
+            target_path = part;
+            break;
+        }
+    }
+
+    match crate::vfs::list_dir(target_path) {
         Ok(entries) => {
-            print_colored!(Color::LightCyan, Color::Black, "VFS: {}\n", if path.is_empty() { "." } else { path });
+            print_colored!(Color::LightCyan, Color::Black, "VFS: {}\n", if target_path.is_empty() { "." } else { target_path });
             if entries.is_empty() {
                 println!("  (empty)");
                 return;
@@ -266,8 +313,18 @@ fn cmd_ls(args: &str) {
             }
         }
         Err(_) => {
+            if let Some((_, kind, size)) = crate::vfs::stat(target_path) {
+                if kind == InodeType::File {
+                    print_colored!(Color::LightCyan, Color::Black, "VFS: {}\n", target_path);
+                    print!("  ");
+                    let display_name = target_path.rsplit('/').next().unwrap_or(target_path);
+                    print_pad_right(display_name, 16);
+                    println!("{} bytes", size);
+                    return;
+                }
+            }
             print_colored!(Color::LightRed, Color::Black, "Error: ");
-            println!("Path '{}' not found", if path.is_empty() { "." } else { path });
+            println!("Path '{}' not found", if target_path.is_empty() { "." } else { target_path });
         }
     }
 }
@@ -278,6 +335,14 @@ fn cmd_cat(args: &str) {
         print_colored!(Color::LightRed, Color::Black, "Usage: ");
         println!("cat <filename>");
         return;
+    }
+
+    if let Some((_, kind, _)) = crate::vfs::stat(file) {
+        if kind == InodeType::Directory {
+            print_colored!(Color::LightRed, Color::Black, "Error: ");
+            println!("'{}' is a directory", file);
+            return;
+        }
     }
 
     match crate::vfs::read_file(file) {
@@ -306,6 +371,10 @@ fn cmd_touch(args: &str) {
     if file.is_empty() {
         print_colored!(Color::LightRed, Color::Black, "Usage: ");
         println!("touch <filename>");
+        return;
+    }
+
+    if crate::vfs::read_file(file).is_some() {
         return;
     }
 
