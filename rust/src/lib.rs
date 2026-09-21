@@ -52,7 +52,7 @@ fn panic(info: &PanicInfo) -> ! {
     println!("Message: {}", info.message());
     println!("System halted. Please reboot.");
 
-    logln!("[Nyxara Kernel Panic] {}", info.message());
+    logln!("[Nyxara Kernel Is Panic] {}", info.message());
 
     loop {
         unsafe {
