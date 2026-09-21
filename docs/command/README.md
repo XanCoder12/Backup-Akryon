@@ -123,6 +123,46 @@ mkdir projects
 mkdir projects/src
 ```
 
+### `rm`
+
+```text
+rm <file>
+```
+
+Menghapus file. Command ini tidak menghapus direktori dan tidak mendukung recursive delete.
+
+### `rmdir`
+
+```text
+rmdir <empty-directory>
+```
+
+Menghapus direktori yang kosong. Root, current directory, dan direktori yang masih berisi file tidak dapat dihapus.
+
+### `cp`
+
+```text
+cp <source> <destination>
+```
+
+Menyalin file ke path baru. Command menolak tujuan yang sudah ada agar tidak menimpa data secara tidak sengaja. Jika tujuan adalah direktori, nama file sumber digunakan di dalam direktori tersebut.
+
+### `mv`
+
+```text
+mv <source> <destination>
+```
+
+Memindahkan atau mengganti nama file. Command menolak tujuan yang sudah ada dan hanya bekerja pada file.
+
+### `stat`
+
+```text
+stat <path>
+```
+
+Menampilkan path canonical, tipe inode, dan ukuran path yang diberikan.
+
 ### `ls`
 
 ```text
