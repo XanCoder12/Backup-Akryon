@@ -58,9 +58,7 @@ unsafe impl Sync for SafeRamFs {}
 static RAMFS: SafeRamFs = SafeRamFs(UnsafeCell::new(None));
 
 fn normalize_path(cwd: &str, input: &str) -> Option<String> {
-    if input.is_empty() {
-        return None;
-    }
+    let input = if input.is_empty() { "." } else { input };
 
     let base = if input.starts_with('/') { "/" } else { cwd };
     let mut parts: Vec<&str> = Vec::new();
@@ -97,15 +95,8 @@ fn base_name(path: &str) -> &str {
 
 fn destination_path(fs: &RamFs, source: &str, destination: &str) -> Option<String> {
     let path = normalize_path(&fs.current_dir, destination)?;
-    if find_inode(fs, &path)
-        .map(|inode| inode.inode_type == InodeType::Directory)
-        .unwrap_or(false)
-    {
-        if path == "/" {
-            Some(format_path(path.as_str(), base_name(source)))
-        } else {
-            Some(format_path(path.as_str(), base_name(source)))
-        }
+    if has_directory(fs, &path) {
+        Some(format_path(path.as_str(), base_name(source)))
     } else {
         Some(path)
     }
@@ -141,7 +132,7 @@ pub fn init() {
         current_dir: String::from("/"),
     };
 
-    for directory in ["/etc", "/dev"] {
+    for directory in ["/etc", "/dev", "/bin", "/home", "/tmp"] {
         fs.files.push(MemoryInode {
             name: String::from(directory),
             inode_type: InodeType::Directory,
@@ -207,6 +198,33 @@ pub fn make_dir(path: &str) -> Result<(), i32> {
             inode_type: InodeType::Directory,
             data: Vec::new(),
         });
+        Ok(())
+    }
+}
+
+pub fn make_dir_p(path: &str) -> Result<(), i32> {
+    unsafe {
+        let fs = (&mut *RAMFS.0.get()).as_mut().ok_or(-5)?;
+        let target = normalize_path(&fs.current_dir, path).ok_or(-22)?;
+        if target == "/" {
+            return Ok(());
+        }
+        let parts: Vec<&str> = target.split('/').filter(|s| !s.is_empty()).collect();
+        let mut cur = String::from("");
+        for part in parts {
+            cur.push('/');
+            cur.push_str(part);
+            if !has_directory(fs, &cur) {
+                if find_inode(fs, &cur).is_some() {
+                    return Err(-20); // ENOTDIR
+                }
+                fs.files.push(MemoryInode {
+                    name: cur.clone(),
+                    inode_type: InodeType::Directory,
+                    data: Vec::new(),
+                });
+            }
+        }
         Ok(())
     }
 }
