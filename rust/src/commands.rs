@@ -48,6 +48,11 @@ pub fn handle_command(cmd: &str) {
         "cd" => cmd_cd(args),
         "mkdir" => cmd_mkdir(args),
         "ls" => cmd_ls(args),
+        "rm" => cmd_rm(args),
+        "rmdir" => cmd_rmdir(args),
+        "cp" => cmd_cp(args),
+        "mv" => cmd_mv(args),
+        "stat" => cmd_stat(args),
         "cat" => cmd_cat(args),
         "touch" => cmd_touch(args),
         "write" => cmd_write(args),
@@ -91,6 +96,11 @@ fn cmd_help() {
     println!("  pwd               - Display current directory");
     println!("  cd <dir>          - Change current directory");
     println!("  mkdir <dir>       - Create a directory");
+    println!("  rm <file>         - Remove a file");
+    println!("  rmdir <dir>       - Remove an empty directory");
+    println!("  cp <src> <dst>    - Copy a file");
+    println!("  mv <src> <dst>    - Move or rename a file");
+    println!("  stat <path>       - Display inode information");
     println!("  date              - Display current date from RTC/CMOS");
     println!("  time              - Display current time from RTC/CMOS");
     println!("  ls                - List files in virtual filesystem (VFS)");
@@ -153,6 +163,86 @@ fn cmd_mkdir(args: &str) {
     if crate::vfs::make_dir(path).is_err() {
         print_colored!(Color::LightRed, Color::Black, "Error: ");
         println!("Failed to create directory '{}'", path);
+    }
+}
+
+fn cmd_rm(args: &str) {
+    let path = args.trim();
+    if path.is_empty() {
+        print_colored!(Color::LightRed, Color::Black, "Usage: ");
+        println!("rm <file>");
+        return;
+    }
+    if crate::vfs::remove_file(path).is_err() {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("Cannot remove file '{}'", path);
+    }
+}
+
+fn cmd_rmdir(args: &str) {
+    let path = args.trim();
+    if path.is_empty() {
+        print_colored!(Color::LightRed, Color::Black, "Usage: ");
+        println!("rmdir <empty-directory>");
+        return;
+    }
+    if crate::vfs::remove_dir(path).is_err() {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("Cannot remove directory '{}' (it must be empty and not be the current directory)", path);
+    }
+}
+
+fn split_two_paths(args: &str) -> Option<(&str, &str)> {
+    let mut parts = args.split_whitespace();
+    let source = parts.next()?;
+    let destination = parts.next()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((source, destination))
+}
+
+fn cmd_cp(args: &str) {
+    let Some((source, destination)) = split_two_paths(args.trim()) else {
+        print_colored!(Color::LightRed, Color::Black, "Usage: ");
+        println!("cp <source> <destination>");
+        return;
+    };
+    if crate::vfs::copy_file(source, destination).is_err() {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("Cannot copy '{}' to '{}'", source, destination);
+    }
+}
+
+fn cmd_mv(args: &str) {
+    let Some((source, destination)) = split_two_paths(args.trim()) else {
+        print_colored!(Color::LightRed, Color::Black, "Usage: ");
+        println!("mv <source> <destination>");
+        return;
+    };
+    if crate::vfs::move_file(source, destination).is_err() {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("Cannot move '{}' to '{}'", source, destination);
+    }
+}
+
+fn cmd_stat(args: &str) {
+    let path = args.trim();
+    if path.is_empty() {
+        print_colored!(Color::LightRed, Color::Black, "Usage: ");
+        println!("stat <path>");
+        return;
+    }
+    match crate::vfs::stat(path) {
+        Some((name, kind, size)) => {
+            println!("Path : {}", name);
+            println!("Type : {:?}", kind);
+            println!("Size : {} bytes", size);
+        }
+        None => {
+            print_colored!(Color::LightRed, Color::Black, "Error: ");
+            println!("Path '{}' not found", path);
+        }
     }
 }
 
