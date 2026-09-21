@@ -414,8 +414,12 @@ fn complete_input(
 
     if start == 0 {
         for name in [
-            "help", "clear", "about", "sysinfo", "free", "uptime", "date", "time", "ls", "cat",
-            "touch", "write", "echo", "mway", "vmm", "reboot",
+            "help", "clear", "about", "version", "sysinfo", "free", "meminfo", "uptime", "pwd",
+            "cd", "mkdir", "ls", "rm", "rmdir", "cp", "mv", "stat", "cat", "touch", "write",
+            "syscall", "echo", "color", "calc", "ifconfig", "netinfo", "dhcp", "dns", "nslookup",
+            "ping", "arp", "netstat", "curl", "fetch", "httpd", "nc", "date", "time", "mway",
+            "vmm", "panic", "reboot", "lalaufetch", "mouse", "paint", "uname", "whoami",
+            "hostname", "motd", "sudo",
         ] {
             if name.as_bytes().starts_with(prefix) && name.len() > prefix.len() {
                 candidates.push(String::from(name));
