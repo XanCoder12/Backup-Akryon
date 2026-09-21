@@ -7,7 +7,7 @@
 [ORG 0x7C00]
 
 KERNEL_START_SEG equ 0x1000      ; 0x1000:0x0000 -> Physical 0x10000 (64 KB)
-TOTAL_SECTORS    equ 900         ; Total sektor kernel (~450 KB, fits below EBDA/VGA)
+TOTAL_SECTORS    equ 1000        ; Batas kernel 512 KB, tetap di bawah area VGA
 CHUNK_SECTORS    equ 64          ; Baca dalam chunk 64 sektor (32 KB) per int 0x13
 
 start:
