@@ -61,11 +61,15 @@ RUST_SRCS := $(shell find $(RUST_DIR)/src -name '*.rs')
 # Default Target
 all: $(OS_IMAGE)
 
-.PHONY: test-line-editor
+.PHONY: test-line-editor test-vfs
 
 test-line-editor: | $(BUILD_DIR)
 	$(RUSTC) --edition 2021 --test tests/line_editor_test.rs -o $(BUILD_DIR)/line_editor_tests
 	$(BUILD_DIR)/line_editor_tests
+
+test-vfs: | $(BUILD_DIR)
+	$(RUSTC) --edition 2021 --test tests/vfs_test.rs -o $(BUILD_DIR)/vfs_tests
+	$(BUILD_DIR)/vfs_tests
 
 # Ensure build directory exists
 $(BUILD_DIR):
