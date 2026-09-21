@@ -39,4 +39,39 @@ fn supports_safe_file_and_directory_operations() {
     vfs::remove_dir("/projects/src").unwrap();
     vfs::remove_dir("/projects").unwrap();
     assert!(vfs::stat("/projects").is_none());
+
+    // Test list_dir on empty string and dot
+    let root_entries = vfs::list_dir("").unwrap();
+    assert!(root_entries.iter().any(|(name, _, kind)| name == "etc" && *kind == InodeType::Directory));
+    assert!(root_entries.iter().any(|(name, _, kind)| name == "motd" && *kind == InodeType::File));
+
+    let dot_entries = vfs::list_dir(".").unwrap();
+    assert_eq!(root_entries.len(), dot_entries.len());
+
+    let list_files = vfs::list_files();
+    assert!(!list_files.is_empty());
+
+    // Test stat on dot and slash
+    let (stat_name, stat_kind, _) = vfs::stat(".").unwrap();
+    assert_eq!(stat_name, "/");
+    assert_eq!(stat_kind, InodeType::Directory);
+
+    // Test copy to root directory
+    vfs::make_dir("subdir").unwrap();
+    vfs::write_file("subdir/sample.txt", b"sample data\n").unwrap();
+    vfs::copy_file("subdir/sample.txt", "/").unwrap();
+    assert_eq!(vfs::read_file("/sample.txt").as_deref(), Some(b"sample data\n".as_slice()));
+    assert_eq!(vfs::read_file("sample.txt").as_deref(), Some(b"sample data\n".as_slice()));
+    vfs::remove_file("/sample.txt").unwrap();
+    vfs::remove_file("subdir/sample.txt").unwrap();
+    vfs::remove_dir("subdir").unwrap();
+
+    // Test make_dir_p
+    vfs::make_dir_p("a/b/c").unwrap();
+    assert!(vfs::change_dir("a/b/c").is_ok());
+    assert_eq!(vfs::current_dir(), "/a/b/c");
+    vfs::change_dir("/").unwrap();
+    vfs::remove_dir("/a/b/c").unwrap();
+    vfs::remove_dir("/a/b").unwrap();
+    vfs::remove_dir("/a").unwrap();
 }
