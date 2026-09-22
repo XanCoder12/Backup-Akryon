@@ -4,6 +4,8 @@
 #include "serial.h"
 
 static isr_t interrupt_handlers[256] = {0};
+static registers_t* switch_frame = 0;
+uint32_t irq_switch_stack = 0;
 
 static const char* const exception_messages[32] = {
     "Divide by Zero",
@@ -110,7 +112,15 @@ void isr_handler(registers_t* regs) {
     }
 }
 
-void irq_handler(registers_t* regs) {
+void irq_set_switch_frame(registers_t* regs, uint32_t stack_top) {
+    switch_frame = regs;
+    irq_switch_stack = stack_top != 0 ? stack_top - 12 : 0;
+}
+
+registers_t* irq_handler(registers_t* regs) {
+    switch_frame = 0;
+    irq_switch_stack = 0;
+
     // Send EOI (End of Interrupt) to PICs
     if (regs->int_no >= 40) {
         // Send reset signal to slave
@@ -123,4 +133,6 @@ void irq_handler(registers_t* regs) {
         isr_t handler = interrupt_handlers[regs->int_no];
         handler(regs);
     }
+
+    return switch_frame != 0 ? switch_frame : regs;
 }
