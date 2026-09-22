@@ -21,6 +21,7 @@ global irq8, irq9, irq10, irq11, irq12, irq13, irq14, irq15
 extern kmain
 extern isr_handler
 extern irq_handler
+extern irq_switch_stack
 extern bss_start
 extern bss_end
 
@@ -239,6 +240,21 @@ irq_common_stub:
     push esp
     call irq_handler
     add esp, 4
+    mov edx, [irq_switch_stack]
+    test edx, edx
+    jz .use_saved_frame
+
+    ; Copy the iret frame to the task's real stack before restoring registers.
+    ; Load all values first because the destination overlaps the source frame.
+    mov ecx, [eax + 44]         ; EIP
+    mov edi, [eax + 48]         ; CS
+    mov esi, [eax + 52]         ; EFLAGS
+    mov [edx], ecx
+    mov [edx + 4], edi
+    mov [edx + 8], esi
+
+.use_saved_frame:
+    mov esp, eax
 
     pop eax
     mov ds, ax
@@ -248,4 +264,9 @@ irq_common_stub:
 
     popa
     add esp, 8
+    cmp dword [irq_switch_stack], 0
+    je .return_from_saved_frame
+    mov esp, [irq_switch_stack]
+    mov dword [irq_switch_stack], 0
+.return_from_saved_frame:
     iret
