@@ -12,6 +12,7 @@ pub mod line_editor;
 pub mod mouse;
 pub mod net;
 pub mod pmm;
+pub mod process;
 pub mod serial;
 pub mod shell;
 pub mod syscall;
@@ -170,5 +171,6 @@ pub extern "C" fn nyxara_rust_main() -> ! {
     // Run automated self-test of Virtual Memory Manager (Identity & Demand Paging)
     vmm::test_vmm();
 
+    process::init();
     shell::run_shell();
 }
