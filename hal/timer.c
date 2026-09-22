@@ -4,9 +4,12 @@
 
 static volatile uint32_t timer_ticks = 0;
 
+extern void nyxara_scheduler_tick(void* regs);
+
 static void timer_callback(registers_t* regs) {
     (void)regs;
     timer_ticks++;
+    nyxara_scheduler_tick(regs);
 }
 
 void timer_init(uint32_t freq) {
