@@ -54,6 +54,9 @@ pub fn handle_command(cmd: &str) {
         "sysinfo" => cmd_sysinfo(),
         "free" | "meminfo" => cmd_free(),
         "uptime" => cmd_uptime(),
+        "ps" => crate::process::print_tasks(),
+        "yield" => crate::process::yield_now(),
+        "sleep" => cmd_sleep(args),
         "pwd" => cmd_pwd(),
         "cd" => cmd_cd(args),
         "mkdir" => cmd_mkdir(args),
@@ -122,6 +125,9 @@ fn cmd_help() {
     println!("  sysinfo           - Display hardware and CPU status");
     println!("  free / meminfo    - Display physical memory and allocator status");
     println!("  uptime            - Display system uptime");
+    println!("  ps                - Display kernel tasks");
+    println!("  yield             - Voluntarily yield the CPU");
+    println!("  sleep <ticks>     - Block the current task");
     println!("  pwd               - Display current directory");
     println!("  cd <dir>          - Change current directory");
     println!("  mkdir <dir>       - Create a directory");
@@ -167,6 +173,19 @@ fn print_pad_right(s: &str, width: usize) {
     } else {
         print!("  ");
     }
+}
+
+fn cmd_sleep(args: &str) {
+    let ticks = match args.trim().parse::<u32>() {
+        Ok(ticks) if ticks > 0 => ticks,
+        _ => {
+            print_colored!(Color::LightRed, Color::Black, "Usage: " );
+            println!("sleep <ticks>");
+            return;
+        }
+    };
+
+    crate::process::sleep(ticks);
 }
 
 fn cmd_pwd() {
