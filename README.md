@@ -65,7 +65,7 @@
 
 | Perintah | Deskripsi |
 |---|---|
-| `help` | Menampilkan panduan dan daftar perintah yang tersedia |
+| `help` | Menampilkan panduan dan daftar perintah yang tersedia di OS|
 | `clear` | Membersihkan layar dan menampilkan kembali banner Nyxara |
 | `about` | Menampilkan informasi arsitektur hybrid C & Rust OS |
 | `sysinfo` | Menampilkan mode CPU, pointer stack, status interrupt, dan timer ticks |
