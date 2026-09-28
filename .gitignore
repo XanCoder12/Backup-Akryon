@@ -33,6 +33,7 @@ bochsout.txt
 .DS_Store
 Thumbs.db
 CLAUDE.md
+.zcodeignore
 # Scratch / Temp Files
 scratch/
 website/
