@@ -339,7 +339,7 @@ Gunakan hanya untuk debugging.
 lalaufetch
 ```
 
-Menampilkan informasi sistem dengan tampilan bergaya `neofetch`.
+Menampilkan ringkasan sistem bergaya `fastfetch`, termasuk uptime, penggunaan physical-frame allocator, status paging, dan resolusi framebuffer aktif.
 
 ## Networking
 

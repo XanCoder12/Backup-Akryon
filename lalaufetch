@@ -14,30 +14,11 @@ C4="\e[38;5;203m"   # coral-red        (separators)
 C5="\e[38;5;117m"   # sky blue         (misc)
 C6="\e[38;5;82m"    # neon green       (uptime / status)
 
-# ─── ASCII Logo (galaxy) ─────────────────────────────────────
-# Braille galaxy art from galaxy.txt, colored cyan-mint
-print_logo() {
-  echo -e "${C2}${BOLD}"
-  echo -e "                         ····••••••••••··"
-  echo -e "                         ··•••●●●●●●●●●●●●●••·"
-  echo -e "                       ··••●●●●●••••••●●●●●●●●•••·······••••·······"
-  echo -e "                      ·•••●●●●•·       ·•●●●●●●●●●●●●●●●•••···"
-  echo -e "                     ••••●●●●·           •●●●●●●●●●••···"
-  echo -e "                   ··••●●●●●•      ··•••●●●●•••···"
-  echo -e "                 ·•••●●●●●●●●●••●●●●•••···•••·"
-  echo -e "             ··••●●●●●●●●●●••••···       •●●••·"
-  echo -e "        ···••●●●●●●•••···  ·●●●•·     ·•●●●••·"
-  echo -e "     ··········            ·•●●●●●●●●●●●●●•··"
-  echo -e "                             ··••●●●●●••··"
-  echo -e "${RESET}"
-}
-
 # ─── Helpers ─────────────────────────────────────────────────
 info_line() {
   local label="$1"
   local value="$2"
-  local icon="$3"
-  printf "  ${C0}${BOLD}%-14s${RESET}  ${C4}│${RESET}  ${C1}%s${RESET}\n" "${icon} ${label}" "${value}"
+  printf "  ${C0}${BOLD}%-14s${RESET}  ${C4}│${RESET}  ${C1}%s${RESET}\n" "${label}" "${value}"
 }
 
 sep_line() {
@@ -69,77 +50,155 @@ get_kernel() {
 
 get_hostname() {
   if command -v hostname &>/dev/null; then
-    hostname
+    hostname -s 2>/dev/null || hostname
   elif [ -f /proc/sys/kernel/hostname ]; then
     cat /proc/sys/kernel/hostname
   else
-    echo "${HOSTNAME:-unknown}"
+    echo "${HOSTNAME:-N/A}"
   fi
 }
 
 get_user() {
-  echo "${USER:-$(whoami)}"
+  if [ -n "${USER:-}" ]; then
+    echo "$USER"
+  elif command -v id &>/dev/null; then
+    id -un
+  else
+    echo "N/A"
+  fi
 }
 
 get_shell() {
-  basename "${SHELL}"
+  local shell="${SHELL:-}"
+  if [ -z "$shell" ] && command -v ps &>/dev/null; then
+    shell=$(ps -p "$PPID" -o comm= 2>/dev/null)
+  fi
+  if [ -n "$shell" ]; then
+    basename "$shell"
+  else
+    echo "N/A"
+  fi
 }
 
 get_uptime() {
-  if command -v uptime &>/dev/null; then
-    up=$(uptime -p 2>/dev/null || uptime | sed 's/.*up \([^,]*\).*/\1/')
-    echo "${up}"
+  if [ -r /proc/uptime ]; then
+    awk '{
+      seconds = int($1)
+      days = int(seconds / 86400)
+      hours = int(seconds % 86400 / 3600)
+      minutes = int(seconds % 3600 / 60)
+      if (days > 0) printf "%d days, %d hours, %d mins", days, hours, minutes
+      else if (hours > 0) printf "%d hours, %d mins", hours, minutes
+      else printf "%d mins", minutes
+    }' /proc/uptime
+  elif command -v uptime &>/dev/null; then
+    uptime -p 2>/dev/null || echo "N/A"
   else
-    echo "unknown"
+    echo "N/A"
   fi
 }
 
 get_cpu() {
   if [ -f /proc/cpuinfo ]; then
-    grep -m1 "model name" /proc/cpuinfo | sed 's/.*: //' | sed 's/  */ /g'
+    local model cores
+    model=$(awk -F: '/^(model name|Hardware|Processor)[[:space:]]*:/ {
+      sub(/^[[:space:]]+/, "", $2); print $2; exit
+    }' /proc/cpuinfo)
+    if [ -z "$model" ]; then
+      model="N/A"
+    fi
+    if command -v nproc &>/dev/null; then
+      cores=$(nproc 2>/dev/null)
+    else
+      cores=$(grep -c '^processor[[:space:]]*:' /proc/cpuinfo)
+    fi
+    if [[ "$cores" =~ ^[0-9]+$ ]] && [ "$cores" -gt 0 ]; then
+      printf "%s (%s logical CPUs)" "$model" "$cores"
+    else
+      printf "%s" "$model"
+    fi
+  elif command -v sysctl &>/dev/null; then
+    sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "N/A"
   else
-    sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "unknown"
+    echo "N/A"
   fi
 }
 
 get_memory() {
   if [ -f /proc/meminfo ]; then
-    total=$(awk '/MemTotal/ {printf "%.0f", $2/1024}' /proc/meminfo)
-    avail=$(awk '/MemAvailable/ {printf "%.0f", $2/1024}' /proc/meminfo)
-    used=$((total - avail))
-    echo "${used} MiB / ${total} MiB"
+    awk '
+      /^MemTotal:/ { total = $2 }
+      /^MemAvailable:/ { available = $2; has_available = 1 }
+      /^MemFree:/ { free = $2 }
+      /^Buffers:/ { buffers = $2 }
+      /^Cached:/ { cached = $2 }
+      END {
+        if (total <= 0) {
+          print "N/A"
+          exit
+        }
+        if (!has_available) available = free + buffers + cached
+        used = total - available
+        if (used < 0) used = 0
+        printf "%.0f MiB / %.0f MiB (%d%%)", used / 1024, total / 1024, used * 100 / total
+      }
+    ' /proc/meminfo
   else
-    echo "unknown"
+    echo "N/A"
   fi
 }
 
 get_disk() {
-  df -h / 2>/dev/null | awk 'NR==2 {print $3 " / " $2 " (" $5 " used)"}'
+  if command -v df &>/dev/null; then
+    df -hP / 2>/dev/null | awk 'NR == 2 { printf "%s / %s (%s used)", $3, $2, $5; found = 1 }
+      END { if (!found) print "N/A" }'
+  else
+    echo "N/A"
+  fi
 }
 
 get_packages() {
-  count=0
-  if command -v dpkg &>/dev/null; then
-    count=$(dpkg -l 2>/dev/null | grep -c "^ii")
-    echo "${count} (dpkg)"
+  local distro=""
+  if [ -r /etc/os-release ]; then
+    distro=$(. /etc/os-release; echo "${ID:-}")
+  fi
+
+  if [[ "$distro" =~ ^(arch|manjaro|endeavouros)$ ]] && command -v pacman &>/dev/null; then
+    printf "%s (pacman)" "$(pacman -Qq 2>/dev/null | wc -l)"
+  elif [[ "$distro" =~ ^(debian|ubuntu|linuxmint|pop)$ ]] && command -v dpkg-query &>/dev/null; then
+    printf "%s (dpkg)" "$(dpkg-query -f '${db:Status-Abbrev}\n' -W 2>/dev/null | grep -c '^ii')"
   elif command -v rpm &>/dev/null; then
-    count=$(rpm -qa 2>/dev/null | wc -l)
-    echo "${count} (rpm)"
+    printf "%s (rpm)" "$(rpm -qa 2>/dev/null | wc -l)"
   elif command -v pacman &>/dev/null; then
-    count=$(pacman -Q 2>/dev/null | wc -l)
-    echo "${count} (pacman)"
+    printf "%s (pacman)" "$(pacman -Qq 2>/dev/null | wc -l)"
+  elif command -v dpkg-query &>/dev/null; then
+    printf "%s (dpkg)" "$(dpkg-query -f '${db:Status-Abbrev}\n' -W 2>/dev/null | grep -c '^ii')"
   else
-    echo "unknown"
+    echo "N/A"
   fi
 }
 
 get_de_wm() {
-  local de="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-${WAYLAND_DISPLAY:+Wayland}}}"
-  echo "${de:-TTY}"
+  local desktop="${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-${DESKTOP_SESSION:-}}}"
+  local session="${XDG_SESSION_TYPE:-}"
+  if [ -z "$session" ]; then
+    if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+      session="Wayland"
+    elif [ -n "${DISPLAY:-}" ]; then
+      session="X11"
+    else
+      session="TTY"
+    fi
+  fi
+  if [ -n "$desktop" ]; then
+    printf "%s (%s)" "$desktop" "$session"
+  else
+    printf "%s" "$session"
+  fi
 }
 
 get_terminal() {
-  local term="${TERM_PROGRAM:-${TERM:-unknown}}"
+  local term="${TERM_PROGRAM:-${TERM:-N/A}}"
   echo "${term}"
 }
 
@@ -148,63 +207,95 @@ get_arch() {
 }
 
 get_local_ip() {
-  local ip
-  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-  if [ -z "$ip" ]; then
+  local ip=""
+  if command -v hostname &>/dev/null; then
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  fi
+  if [ -z "$ip" ] && command -v ip &>/dev/null; then
     ip=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{print $7; exit}')
   fi
-  echo "${ip:-N/A}"
+  printf "%s" "${ip:-N/A}"
 }
 
 get_resolution() {
-  if command -v xdpyinfo &>/dev/null; then
-    xdpyinfo 2>/dev/null | awk '/dimensions/{print $2}'
-  elif command -v xrandr &>/dev/null; then
-    xrandr 2>/dev/null | awk '/\*/{print $1; exit}'
-  else
-    echo "N/A"
+  local resolution=""
+  if command -v wlr-randr &>/dev/null; then
+    resolution=$(wlr-randr 2>/dev/null | awk '/\(current\)/ {print $1; exit}')
   fi
+  if [ -z "$resolution" ] && command -v xrandr &>/dev/null; then
+    resolution=$(xrandr --current 2>/dev/null | awk '/\*/ {print $1; exit}')
+  fi
+  if [ -z "$resolution" ] && command -v xdpyinfo &>/dev/null; then
+    resolution=$(xdpyinfo 2>/dev/null | awk '/dimensions:/ {print $2; exit}')
+  fi
+  printf "%s" "${resolution:-N/A}"
 }
 
-# ─── Banner Header ───────────────────────────────────────────
-print_header() {
-  local user host
-  user=$(get_user)
-  host=$(get_hostname)
-  echo ""
-  echo -e "  ${C3}${BOLD}${user}${RESET}${C4}@${RESET}${C3}${BOLD}${host}${RESET}"
-  sep_line
+get_gpu() {
+  if command -v lspci &>/dev/null; then
+    local gpu
+    gpu=$(lspci -nn 2>/dev/null | awk -F': ' '
+      tolower($0) ~ /(vga compatible controller|3d controller|display controller)/ {
+        print $2; exit
+      }')
+    if [ -n "$gpu" ]; then
+      printf "%s" "$gpu"
+      return
+    fi
+  fi
+  echo "N/A"
 }
 
 # ─── Main ────────────────────────────────────────────────────
 main() {
   clear
 
-  print_logo
+  local user host
+  user=$(get_user)
+  host=$(get_hostname)
 
-  print_header
+  local -a logo=(
+    "        .     *"
+    "       .  .----.  ."
+    "     *  .  *   ."
+    "       /  .---.   \\"
+    "      |  /     \\  |"
+    "   .  |  \\     /  |  *"
+    "      \\   .---.  /"
+    "    *  .       ."
+    "       .-----."
+    "          *"
+  )
+  local -a labels=(
+    "OS" "Kernel" "Architecture" "Host" "Uptime" "Shell" "Terminal"
+    "DE / WM" "Packages" "CPU" "GPU" "Memory" "Disk (/)" "Local IP" "Resolution"
+  )
+  local -a values=(
+    "$(get_os)" "$(get_kernel)" "$(get_arch)" "$host" "$(get_uptime)"
+    "$(get_shell)" "$(get_terminal)" "$(get_de_wm)" "$(get_packages)"
+    "$(get_cpu)" "$(get_gpu)" "$(get_memory)" "$(get_disk)"
+    "$(get_local_ip)" "$(get_resolution)"
+  )
 
-  info_line "os"         "$(get_os)"         "󰣇"
-  info_line "kernel"     "$(get_kernel)"      "󰌽"
-  info_line "arch"       "$(get_arch)"        "󰘴"
-  info_line "host"       "$(get_hostname)"    "󰒋"
-  info_line "uptime"     "$(get_uptime)"      "󰔚"
-  info_line "shell"      "$(get_shell)"       ""
-  info_line "terminal"   "$(get_terminal)"    "󰆍"
-  info_line "de / wm"    "$(get_de_wm)"       "󰇄"
-  info_line "packages"   "$(get_packages)"    "󰏖"
-  info_line "cpu"        "$(get_cpu)"         "󰻠"
-  info_line "memory"     "$(get_memory)"      "󰍛"
-  info_line "disk (/)"   "$(get_disk)"        "󰋊"
-  info_line "local ip"   "$(get_local_ip)"    "󰩟"
-  info_line "resolution" "$(get_resolution)"  "󰹑"
+  local i logo_line
+  for ((i = 0; i < ${#labels[@]} + 2; i++)); do
+    logo_line="${logo[i]:-}"
+    printf "  ${C2}%-24s${RESET}  " "$logo_line"
+    if [ "$i" -eq 0 ]; then
+      printf "${C3}${BOLD}%s${RESET}${C4}@${RESET}${C3}${BOLD}%s${RESET}\n" "$user" "$host"
+    elif [ "$i" -eq 1 ]; then
+      printf "${C4}%s${RESET}\n" "------------------------------"
+    else
+      info_line "${labels[i - 2]}" "${values[i - 2]}"
+    fi
+  done
 
   sep_line
   color_blocks
   echo ""
 
   # Footer — version watermark
-  echo -e "  ${DIM}${C5}lalaufetch ${C4}v1.0.0 ${C0}— system info for galaxy explorers 🌌${RESET}"
+  echo -e "  ${DIM}${C5}lalaufetch ${C4}v1.1.0 ${C0}— system info for galaxy explorers 🌌${RESET}"
   echo ""
 }
 

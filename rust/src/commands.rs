@@ -535,32 +535,37 @@ fn cmd_lalaufetch() {
     ];
 
     let uptime_sec = unsafe { timer_get_uptime_seconds() };
-    let hours = uptime_sec / 3600;
+    let days = uptime_sec / 86_400;
+    let hours = (uptime_sec % 86_400) / 3600;
     let minutes = (uptime_sec % 3600) / 60;
     let seconds = uptime_sec % 60;
-    let uptime_str = if hours > 0 {
+    let uptime_str = if days > 0 {
+        format!("{}d {}h {}m {}s", days, hours, minutes, seconds)
+    } else if hours > 0 {
         format!("{}h {}m {}s", hours, minutes, seconds)
     } else {
         format!("{}m {}s", minutes, seconds)
     };
 
-    let total_kb = crate::pmm::total_memory() / 1024;
-    let used_kb  = crate::pmm::used_memory() / 1024;
-    let free_kb  = crate::pmm::free_memory() / 1024;
-    let mem_str = format!("{} KB used / {} KB total  ({} KB free)", used_kb, total_kb, free_kb);
+    let total_bytes = crate::pmm::total_memory();
+    let used_bytes = crate::pmm::used_memory();
+    let total_mib = total_bytes / (1024 * 1024);
+    let used_mib = used_bytes / (1024 * 1024);
+    let used_percent = if total_bytes == 0 {
+        0
+    } else {
+        used_bytes * 100 / total_bytes
+    };
+    let mem_str = format!("{} MiB / {} MiB ({}% used)", used_mib, total_mib, used_percent);
 
     let display_mode = if framebuffer::is_active() {
-        if framebuffer::cols() >= 120 {
-            "VBE 1024x768 32bpp TrueColor LFB"
-        } else {
-            "VBE 800x600 32bpp TrueColor LFB"
-        }
+        format!("{}x{} 32bpp framebuffer", framebuffer::width(), framebuffer::height())
     } else {
-        "VGA 80x25 text mode"
+        format!("VGA text ({}x{})", vga::get_dimensions().0, vga::get_dimensions().1)
     };
 
     let paging_str = if crate::vmm::is_paging_enabled() {
-        "Enabled (CR0.PG=1 CR0.WP=1)"
+        "Enabled"
     } else {
         "Disabled"
     };
@@ -626,17 +631,16 @@ fn cmd_lalaufetch() {
                     print_colored!(Color::DarkGray, Color::Black, "----------------------------------------");
                 }
             }
-            2 => print_info("os", palette::TEXT, Color::White, "Nyxara OS"),
-            3 => print_info("arch", palette::TEXT, Color::White, "x86 (i686) 32-bit Protected Mode"),
-            4 => print_info("kernel", palette::GREEN, Color::LightGreen, "Rust + C Hybrid Kernel"),
-            5 => print_info("hal", palette::GREEN, Color::LightGreen, "C / ASM  (GDT IDT PIC PIT PS/2 UART)"),
-            6 => print_info("uptime", palette::GREEN, Color::LightGreen, &uptime_str),
-            7 => print_info("memory", palette::SKY, Color::LightCyan, &mem_str),
-            8 => print_info("shell", palette::TEAL, Color::LightCyan, "NyxaraSH"),
-            9 => print_info("display", palette::TEAL, Color::LightCyan, display_mode),
-            10 => print_info("network", palette::SAPPHIRE, Color::LightBlue, "RTL8139 (QEMU virtio-compat)"),
-            11 => print_info("serial", palette::SAPPHIRE, Color::LightBlue, "COM1 @ 38400 baud  (0x3F8)"),
-            12 => print_info("paging", palette::YELLOW, Color::Yellow, paging_str),
+            2 => print_info("OS", palette::TEXT, Color::White, "Nyxara OS"),
+            3 => print_info("Host", palette::TEXT, Color::White, "NyxaraOS"),
+            4 => print_info("Kernel", palette::GREEN, Color::LightGreen, "NyxaraOS 2.0.0-hybrid"),
+            5 => print_info("Architecture", palette::GREEN, Color::LightGreen, "i686 (32-bit)"),
+            6 => print_info("Uptime", palette::GREEN, Color::LightGreen, &uptime_str),
+            7 => print_info("PMM memory", palette::SKY, Color::LightCyan, &mem_str),
+            8 => print_info("Display", palette::TEAL, Color::LightCyan, &display_mode),
+            9 => print_info("Shell", palette::TEAL, Color::LightCyan, "NyxaraSH"),
+            10 => print_info("Kernel core", palette::SAPPHIRE, Color::LightBlue, "Rust + C hybrid"),
+            11 => print_info("Paging", palette::YELLOW, Color::Yellow, paging_str),
             13 => {
                 if framebuffer::is_active() {
                     framebuffer::set_color(palette::SURFACE1, palette::BASE);

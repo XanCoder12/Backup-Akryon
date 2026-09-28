@@ -43,7 +43,7 @@ Nyxara OS includes over 30 built-in shell commands implemented in `rust/src/comm
 
 #### `lalaufetch`
 - **Syntax**: `lalaufetch`
-- **Description**: Neofetch-style system overview presenting a vibrant ASCII galaxy logo alongside OS name, kernel version, CPU architecture, memory utilization, display mode, and uptime.
+- **Description**: Fastfetch-style system overview with a galaxy logo, Nyxara kernel and architecture information, uptime, physical-frame allocator memory usage, paging status, and the active framebuffer resolution (or VGA text dimensions).
 
 ---
 
