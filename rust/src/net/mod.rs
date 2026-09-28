@@ -223,25 +223,40 @@ pub fn ipv4_send(dst_ip: Ipv4Address, proto: u8, payload: Vec<u8>) -> Result<(),
         }
     };
 
-    let ip_pkt = ipv4::Ipv4Packet {
-        tos: 0,
-        id: 0x1234,
-        flags_frag: 0x4000,
-        ttl: 64,
-        proto,
-        src: cfg.ip,
-        dst: dst_ip,
-        payload,
-    };
+    let id = ipv4::next_packet_id();
+    let max_payload = ipv4::MTU - 20;
+    let mut off = 0usize;
+    loop {
+        let end = core::cmp::min(off + max_payload, payload.len());
+        let more = end < payload.len();
+        let flags_frag = 0x4000u16
+            | if more { 0x2000 } else { 0 }
+            | ((off / 8) as u16 & 0x1FFF);
 
-    let frame = ethernet::EthernetFrame {
-        dest: dest_mac,
-        src: cfg.mac,
-        ethertype: ETHERTYPE_IPV4,
-        payload: ip_pkt.to_bytes(),
-    };
+        let ip_pkt = ipv4::Ipv4Packet {
+            tos: 0,
+            id,
+            flags_frag,
+            ttl: 64,
+            proto,
+            src: cfg.ip,
+            dst: dst_ip,
+            payload: payload[off..end].to_vec(),
+        };
 
-    send_raw(&frame.to_bytes())
+        let frame = ethernet::EthernetFrame {
+            dest: dest_mac,
+            src: cfg.mac,
+            ethertype: ETHERTYPE_IPV4,
+            payload: ip_pkt.to_bytes(),
+        };
+
+        send_raw(&frame.to_bytes())?;
+        off = end;
+        if !more {
+            return Ok(());
+        }
+    }
 }
 
 pub fn poll() {
@@ -276,7 +291,7 @@ pub fn poll() {
                 }
             }
             ETHERTYPE_IPV4 => {
-                if let Some(ip_pkt) = ipv4::Ipv4Packet::parse(&frame.payload) {
+                if let Some(ip_pkt) = ipv4::receive(&frame.payload) {
                     let is_for_us = ip_pkt.dst == cfg.ip
                         || ip_pkt.dst == [255, 255, 255, 255]
                         || (ip_pkt.dst[3] == 255 && ip_pkt.dst[0..3] == cfg.ip[0..3]);
@@ -294,4 +309,6 @@ pub fn poll() {
             _ => {}
         }
     }
+
+    tcp::retransmit_tick();
 }

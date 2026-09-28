@@ -1,8 +1,16 @@
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::format;
+use core::cell::UnsafeCell;
+
+extern "C" {
+    fn timer_get_uptime_ms() -> u32;
+}
 
 pub type Ipv4Address = [u8; 4];
+
+pub const MTU: usize = 1500;
+const FRAG_TIMEOUT_MS: u32 = 5000;
 
 pub const PROTO_ICMP: u8 = 1;
 pub const PROTO_TCP: u8 = 6;
@@ -125,6 +133,106 @@ pub fn route_destination(
     } else {
         gw
     }
+}
+
+struct SafePacketId(UnsafeCell<u16>);
+unsafe impl Sync for SafePacketId {}
+
+static NEXT_PACKET_ID: SafePacketId = SafePacketId(UnsafeCell::new(0x1234));
+
+pub fn next_packet_id() -> u16 {
+    unsafe {
+        let id = *NEXT_PACKET_ID.0.get();
+        *NEXT_PACKET_ID.0.get() = id.wrapping_add(1);
+        id
+    }
+}
+
+struct FragEntry {
+    src: Ipv4Address,
+    dst: Ipv4Address,
+    id: u16,
+    proto: u8,
+    data: Vec<u8>,
+    filled: Vec<bool>,
+    total: usize,
+    updated_ms: u32,
+}
+
+struct SafeFragTable(UnsafeCell<Vec<FragEntry>>);
+unsafe impl Sync for SafeFragTable {}
+
+static FRAG_TABLE: SafeFragTable = SafeFragTable(UnsafeCell::new(Vec::new()));
+
+pub fn receive(data: &[u8]) -> Option<Ipv4Packet> {
+    let pkt = Ipv4Packet::parse(data)?;
+    let more_frags = (pkt.flags_frag & 0x2000) != 0;
+    let offset = ((pkt.flags_frag & 0x1FFF) as usize) * 8;
+
+    if !more_frags && offset == 0 {
+        return Some(pkt);
+    }
+
+    reassemble(pkt, offset, more_frags)
+}
+
+fn reassemble(pkt: Ipv4Packet, offset: usize, more_frags: bool) -> Option<Ipv4Packet> {
+    let now = unsafe { timer_get_uptime_ms() };
+    let table = unsafe { &mut *FRAG_TABLE.0.get() };
+    table.retain(|e| now.wrapping_sub(e.updated_ms) < FRAG_TIMEOUT_MS);
+
+    let end = offset + pkt.payload.len();
+    let idx = match table
+        .iter()
+        .position(|e| e.id == pkt.id && e.proto == pkt.proto && e.src == pkt.src && e.dst == pkt.dst)
+    {
+        Some(i) => i,
+        None => {
+            table.push(FragEntry {
+                src: pkt.src,
+                dst: pkt.dst,
+                id: pkt.id,
+                proto: pkt.proto,
+                data: Vec::new(),
+                filled: Vec::new(),
+                total: 0,
+                updated_ms: now,
+            });
+            table.len() - 1
+        }
+    };
+
+    let entry = &mut table[idx];
+    if entry.data.len() < end {
+        entry.data.resize(end, 0);
+        entry.filled.resize(end, false);
+    }
+    entry.data[offset..end].copy_from_slice(&pkt.payload);
+    for b in &mut entry.filled[offset..end] {
+        *b = true;
+    }
+    entry.updated_ms = now;
+    if !more_frags {
+        entry.total = end;
+    }
+
+    let total = entry.total;
+    if total == 0 || !entry.filled[..total].iter().all(|&f| f) {
+        return None;
+    }
+
+    let out = Ipv4Packet {
+        tos: 0,
+        id: entry.id,
+        flags_frag: 0,
+        ttl: 64,
+        proto: entry.proto,
+        src: entry.src,
+        dst: entry.dst,
+        payload: entry.data[..total].to_vec(),
+    };
+    table.remove(idx);
+    Some(out)
 }
 
 pub fn format_ip(ip: &Ipv4Address) -> String {
