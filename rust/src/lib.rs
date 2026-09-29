@@ -4,6 +4,7 @@
 extern crate alloc;
 
 pub mod commands;
+pub mod cpu;
 pub mod editor;
 pub mod font;
 pub mod framebuffer;

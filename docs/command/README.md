@@ -339,7 +339,7 @@ Gunakan hanya untuk debugging.
 lalaufetch
 ```
 
-Menampilkan ringkasan sistem bergaya `fastfetch`, termasuk uptime, penggunaan physical-frame allocator, status paging, dan resolusi framebuffer aktif.
+Menampilkan ringkasan sistem bergaya `fastfetch`, termasuk uptime, penggunaan physical-frame allocator, status paging, resolusi framebuffer aktif, serta identitas CPU asli (vendor string dan brand string dari CPUID, mis. `QEMU Virtual CPU version 2.5+`).
 
 ## Networking
 

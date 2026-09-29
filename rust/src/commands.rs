@@ -570,6 +570,9 @@ fn cmd_lalaufetch() {
         "Disabled"
     };
 
+    let cpu_brand = crate::cpu::brand_string().unwrap_or_else(|| alloc::format!("i686"));
+    let cpu_vendor = crate::cpu::vendor_string().unwrap_or_else(|| alloc::format!("unknown"));
+
     let print_info = |label: &str, fb_color: u32, vga_color: Color, val: &str| {
         if framebuffer::is_active() {
             framebuffer::set_color(palette::MAUVE, palette::BASE);
@@ -587,7 +590,7 @@ fn cmd_lalaufetch() {
         }
     };
 
-    for r in 0..17 {
+    for r in 0..18 {
         // Left column: logo or blank padding (35 chars total)
         if r < logo.len() {
             if framebuffer::is_active() {
@@ -631,17 +634,18 @@ fn cmd_lalaufetch() {
                     print_colored!(Color::DarkGray, Color::Black, "----------------------------------------");
                 }
             }
-            2 => print_info("OS", palette::TEXT, Color::White, "Nyxara OS"),
-            3 => print_info("Host", palette::TEXT, Color::White, "NyxaraOS"),
+            2 => print_info("OS", palette::TEXT, Color::White, "Nyxara OS 2.0.0-hybrid"),
+            3 => print_info("Host", palette::TEXT, Color::White, &cpu_vendor),
             4 => print_info("Kernel", palette::GREEN, Color::LightGreen, "NyxaraOS 2.0.0-hybrid"),
             5 => print_info("Architecture", palette::GREEN, Color::LightGreen, "i686 (32-bit)"),
             6 => print_info("Uptime", palette::GREEN, Color::LightGreen, &uptime_str),
-            7 => print_info("PMM memory", palette::SKY, Color::LightCyan, &mem_str),
+            7 => print_info("Memory", palette::SKY, Color::LightCyan, &mem_str),
             8 => print_info("Display", palette::TEAL, Color::LightCyan, &display_mode),
             9 => print_info("Shell", palette::TEAL, Color::LightCyan, "NyxaraSH"),
-            10 => print_info("Kernel core", palette::SAPPHIRE, Color::LightBlue, "Rust + C hybrid"),
-            11 => print_info("Paging", palette::YELLOW, Color::Yellow, paging_str),
-            13 => {
+            10 => print_info("CPU", palette::SAPPHIRE, Color::LightBlue, &cpu_brand),
+            11 => print_info("Kernel core", palette::SAPPHIRE, Color::LightBlue, "Rust + C hybrid"),
+            12 => print_info("Paging", palette::YELLOW, Color::Yellow, paging_str),
+            14 => {
                 if framebuffer::is_active() {
                     framebuffer::set_color(palette::SURFACE1, palette::BASE);
                     crate::print!("========================================");
@@ -650,7 +654,7 @@ fn cmd_lalaufetch() {
                     print_colored!(Color::DarkGray, Color::Black, "========================================");
                 }
             }
-            14 => {
+            15 => {
                 for c in 0u8..8u8 {
                     vga::set_color(Color::Black, Color::from_u8(c));
                     print!("   ");
@@ -661,7 +665,7 @@ fn cmd_lalaufetch() {
                     vga::set_color(Color::White, Color::Black);
                 }
             }
-            15 => {
+            16 => {
                 for c in 8u8..16u8 {
                     vga::set_color(Color::Black, Color::from_u8(c));
                     print!("   ");
@@ -672,7 +676,7 @@ fn cmd_lalaufetch() {
                     vga::set_color(Color::White, Color::Black);
                 }
             }
-            16 => {
+            17 => {
                 if framebuffer::is_active() {
                     framebuffer::set_color(palette::OVERLAY, palette::BASE);
                     crate::print!("lalaufetch v1.1.0  --  galaxy explorer edition  [TrueColor LFB]");
