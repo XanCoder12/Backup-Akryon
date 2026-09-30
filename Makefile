@@ -18,6 +18,7 @@ BOOT_DIR  := boot
 HAL_DIR   := hal
 KERN_DIR  := kernel
 RUST_DIR  := rust
+USER_DIR  := userland
 
 # Target Files
 OS_IMAGE   := nyxara.img
@@ -25,6 +26,8 @@ BOOT_BIN   := $(BUILD_DIR)/boot.bin
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
 KERNEL_ELF := $(BUILD_DIR)/kernel.elf
 RUST_LIB   := $(BUILD_DIR)/libnyxara_rust.a
+USER_PROGS := hello forktest
+USER_ELFS  := $(addprefix $(BUILD_DIR)/,$(addsuffix .elf,$(USER_PROGS)))
 
 # Flags
 ASM_FLAGS  := -f elf32
@@ -129,19 +132,24 @@ $(BUILD_DIR)/mouse.o: $(HAL_DIR)/mouse.c $(HAL_DIR)/mouse.h $(HAL_DIR)/io.h $(HA
 $(BUILD_DIR)/kmain.o: $(KERN_DIR)/kmain.c $(HAL_DIR)/hal.h | $(BUILD_DIR)
 	$(CC) $(C_FLAGS) $< -o $@
 
-# 5. Build Rust Static Library
-$(RUST_LIB): $(RUST_SRCS) $(RUST_DIR)/Cargo.toml Makefile | $(BUILD_DIR)
+# 5. Build Userland ELF Programs
+$(BUILD_DIR)/%.elf: $(USER_DIR)/%.asm $(USER_DIR)/user.ld | $(BUILD_DIR)
+	$(ASM) -f elf32 $< -o $(BUILD_DIR)/$*.o
+	$(LD) -m elf_i386 -T $(USER_DIR)/user.ld -nostdlib -o $@ $(BUILD_DIR)/$*.o
+
+# 6. Build Rust Static Library
+$(RUST_LIB): $(RUST_SRCS) $(USER_ELFS) $(RUST_DIR)/Cargo.toml Makefile | $(BUILD_DIR)
 	$(RUSTC) $(RUST_FLAGS) $(RUST_DIR)/src/lib.rs -o $@
 
-# 6. Link Assembly, C HAL, and Rust staticlib into Kernel ELF
+# 7. Link Assembly, C HAL, and Rust staticlib into Kernel ELF
 $(KERNEL_ELF): $(BUILD_DIR)/kernel_entry.o $(C_OBJS) $(RUST_LIB) linker.ld
 	$(LD) $(LD_FLAGS) $(BUILD_DIR)/kernel_entry.o $(C_OBJS) $(RUST_LIB) -o $@
 
-# 7. Convert Kernel ELF to Raw Flat Binary
+# 8. Convert Kernel ELF to Raw Flat Binary
 $(KERNEL_BIN): $(KERNEL_ELF)
 	$(OBJCOPY) -O binary $< $@
 
-# 8. Create Floppy Disk Image (1.44MB)
+# 9. Create Floppy Disk Image (1.44MB)
 $(OS_IMAGE): $(BOOT_BIN) $(KERNEL_BIN)
 	cat $(BOOT_BIN) $(KERNEL_BIN) > $(OS_IMAGE)
 	truncate -s 1474560 $(OS_IMAGE)
