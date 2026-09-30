@@ -2,6 +2,7 @@ use crate::vga::{self, Color};
 use crate::{print, println, print_colored, logln};
 use crate::{mouse, framebuffer};
 use crate::vfs::InodeType;
+use alloc::format;
 
 extern "C" {
     fn timer_get_ticks() -> u32;
@@ -56,6 +57,7 @@ pub fn handle_command(cmd: &str) {
         "uptime" => cmd_uptime(),
         "ps" => crate::process::print_tasks(),
         "yield" => crate::process::yield_now(),
+        "run" => cmd_run(args),
         "sleep" => cmd_sleep(args),
         "pwd" => cmd_pwd(),
         "cd" => cmd_cd(args),
@@ -127,6 +129,7 @@ fn cmd_help() {
     println!("  uptime            - Display system uptime");
     println!("  ps                - Display kernel tasks");
     println!("  yield             - Voluntarily yield the CPU");
+    println!("  run <program>     - Execute a userland ELF program from /bin");
     println!("  sleep <ticks>     - Block the current task");
     println!("  pwd               - Display current directory");
     println!("  cd <dir>          - Change current directory");
@@ -172,6 +175,38 @@ fn print_pad_right(s: &str, width: usize) {
         }
     } else {
         print!("  ");
+    }
+}
+
+fn cmd_run(args: &str) {
+    let name = args.trim();
+    if name.is_empty() {
+        println!("Usage: run <program>  (programs live in /bin)");
+        return;
+    }
+    let path = if name.contains('/') {
+        format!("{}", name)
+    } else {
+        format!("/bin/{}", name)
+    };
+    let Some(image) = crate::vfs::read_file(&path) else {
+        print_colored!(Color::LightRed, Color::Black, "Error: ");
+        println!("'{}' not found.", path);
+        return;
+    };
+
+    match crate::process::spawn_elf(&image, name) {
+        Ok(pid) => {
+            println!("Started '{}' (pid {}), waiting for exit...", name, pid);
+            let code = crate::process::wait_kernel(pid);
+            if code >= 0 {
+                println!("'{}' finished with exit code {}.", name, code);
+            }
+        }
+        Err(err) => {
+            print_colored!(Color::LightRed, Color::Black, "Error: ");
+            println!("failed to start '{}' (errno {}).", name, -err);
+        }
     }
 }
 
