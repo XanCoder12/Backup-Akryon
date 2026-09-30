@@ -65,8 +65,18 @@ During `vmm::init()`:
    core::arch::asm!("mov cr0, {0}", in(reg) cr0);
    ```
 
+## Per-Process Address Spaces
+
+PD entries `16..768` (`0x04000000..0xC0000000`) belong to user tasks; everything else is kernel and shared. The VMM exposes directory-generic operations used by the process subsystem (see [Userland](userland.md)):
+
+- `map_page_in(pd, virt, phys, flags)` / `get_phys_addr_in(pd, virt)` — like the global variants but against an arbitrary directory; TLB invalidation is skipped for inactive directories.
+- `clone_kernel_directory()` — a fresh directory holding only the kernel mappings (identity range, LFB, demand zone).
+- `clone_directory_full(pd)` — fork copy: kernel tables shared, user page tables and data frames duplicated eagerly through the identity map.
+- `free_user_space(pd)` — releases every user page table and data frame; the directory frame itself is freed by the caller after switching away.
+- `switch_directory(pd)` — CR3 reload tracked through `active_directory()`, skipped when the target is already active.
+
+The active directory is `PAGE_DIR_PHYS` for kernel tasks and a per-task clone for user tasks; the scheduler and `task_resume_asm` load it on every switch.
+
 ## Automated Verification (`test_vmm`)
 
 At boot time, `vmm::test_vmm()` verifies identity mappings, writes `0x5A5A1234` to the previously unmapped address `0xC0002000`, checks the value and mapping, then tests manual mapping and unmapping at `0xD0001000`.
-
-The Ring 3 demo adds user mappings at `0x04000000` and `0x04001000` to the existing page directory. This is a single shared address space, not per-process isolation. See [Processes, Scheduling, and Ring 3](processes.md).

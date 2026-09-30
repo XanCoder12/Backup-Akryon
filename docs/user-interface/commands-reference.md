@@ -57,7 +57,20 @@ Nyxara OS includes over 30 built-in shell commands implemented in `rust/src/comm
 
 #### `syscall`
 - **Syntax**: `syscall`
-- **Description**: Invokes `int 0x80` from kernel context to exercise `SYS_WRITE` and `SYS_GETPID`. This command does not test a Ring 3 transition; see [Processes, Scheduling, and Ring 3](../kernel/processes.md) for the user-mode demo.
+- **Description**: Invokes `int 0x80` from kernel context to exercise `SYS_WRITE` and `SYS_GETPID`. This command does not test a Ring 3 transition; see [Userland](../kernel/userland.md) for real user-mode execution.
+
+#### `run <program>`
+- **Syntax**: `run <name>` (programs live in `/bin`; an absolute VFS path is also accepted)
+- **Description**: Loads an ELF32 executable from the VFS, spawns it as an isolated Ring 3 process with its own address space, and blocks the shell until it exits, then reports the exit code. Built-in programs: `hello` and `forktest` (fork/waitpid demo). See [Userland](../kernel/userland.md).
+- **Example**:
+  ```
+  nyxara /> run forktest
+  Started 'forktest' (pid 2), waiting for exit...
+  forktest: parent forked, child pid 3
+  forktest: child running, my pid is 3
+  forktest: parent: child exited with code 42
+  'forktest' finished with exit code 0.
+  ```
 
 #### `panic [message]`
 - **Syntax**: `panic [custom_message]`

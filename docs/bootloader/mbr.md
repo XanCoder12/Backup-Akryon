@@ -33,7 +33,7 @@ dap_lba_high:
 ```
 
 ### Chunk Loop Logic
-- **Total Sectors**: Reads 900 sectors (~450 KB) accommodating kernel code, drivers, and static data.
+- **Total Sectors**: Reads 1100 sectors (~550 KB) accommodating kernel code, drivers, static data, and embedded userland ELF images; the ceiling stays below the EBDA region at `0x9FC00`.
 - **Chunk Size**: 64 sectors per call (32 KB).
 - **Segment Increment**: On each successful read, `dap_segment` is advanced by `num_sectors * 32` (`shl ax, 5`), avoiding offset overflow beyond 64 KB boundaries:
   ```assembly
