@@ -25,6 +25,11 @@ extern irq_switch_stack
 extern bss_start
 extern bss_end
 
+; Final stack pointer for task_resume_asm; survives the popa restore.
+section .data
+global resume_esp
+resume_esp: dd 0
+
 ; Kernel stack placed at 0x00130000..0x00140000 (64 KB in extended DRAM above 1MB)
 KERNEL_STACK_TOP equ 0x00140000
 
@@ -110,6 +115,54 @@ tss_flush_asm:
     mov ax, 0x28                ; Index 5 in GDT
     ltr ax
     ret
+
+; Resume a task from Ring 0 syscall context: load CR3, restore general
+; registers from the saved frame, then iret. stack_top of 0 means the task
+; lives on the boot kernel stack and resumes straight through its frame.
+global task_resume_asm
+extern resume_esp
+task_resume_asm:
+    mov eax, [esp + 4]          ; Saved Registers frame
+    mov edx, [esp + 8]          ; Task kernel stack top (0 = boot stack task)
+    mov ecx, [esp + 12]         ; Page directory physical address
+    mov cr3, ecx
+
+    test edx, edx
+    jz .through_frame
+
+    sub edx, 12
+    mov ebx, [eax + 48]         ; CS: ring 3 frames also carry SS:ESP
+    test ebx, 3
+    jz .kernel_frame
+    sub edx, 8
+    mov esi, [eax + 56]         ; useresp
+    mov edi, [eax + 60]         ; SS
+    mov [edx + 12], esi
+    mov [edx + 16], edi
+.kernel_frame:
+    mov esi, [eax + 44]         ; EIP
+    mov [edx], esi
+    mov esi, [eax + 48]         ; CS
+    mov [edx + 4], esi
+    mov esi, [eax + 52]         ; EFLAGS
+    mov [edx + 8], esi
+    jmp .restore
+
+.through_frame:
+    lea edx, [eax + 44]         ; iret fields sit at the end of the frame
+
+.restore:
+    mov [resume_esp], edx
+    mov esp, eax
+    pop eax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    popa
+    add esp, 8                  ; Skip int_no and error code
+    mov esp, [resume_esp]
+    iret
 
 ; Minimal Ring 3 proof-of-life. The function is copied to a user page before use.
 global user_demo_start
