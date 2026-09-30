@@ -25,6 +25,15 @@ pub const IDENTITY_MAPPED_SIZE: usize = NUM_IDENTITY_TABLES * ENTRIES_PER_TABLE 
 pub const DEMAND_PAGING_START: usize = 0xC0000000;
 pub const DEMAND_PAGING_END: usize = 0xC1000000;
 
+// Per-process address space layout: PD entries 16..768 belong to user tasks.
+pub const USER_SPACE_START: usize = 0x04000000;
+pub const USER_SPACE_END: usize = DEMAND_PAGING_START;
+const USER_PD_START: usize = USER_SPACE_START >> 22;
+const DEMAND_PD_INDEX: usize = DEMAND_PAGING_START >> 22;
+
+static mut ACTIVE_PD: usize = PAGE_DIR_PHYS;
+static mut LFB_PD_INDEX: usize = 0;
+
 // ------------------------------------------------------------------------------
 // Page Directory and Page Table Structures (Aligned to 4096 bytes)
 // ------------------------------------------------------------------------------
@@ -48,6 +57,11 @@ pub const IDENT_TABLES_PHYS: usize = 0x00110000; // 64 KB (16 Page Tables)
 #[inline]
 pub unsafe fn get_page_directory() -> &'static mut PageDirectory {
     &mut *(PAGE_DIR_PHYS as *mut PageDirectory)
+}
+
+#[inline]
+unsafe fn directory_at(pd_phys: usize) -> &'static mut PageDirectory {
+    &mut *(pd_phys as *mut PageDirectory)
 }
 
 extern "C" {
@@ -171,6 +185,7 @@ pub fn init() {
         }
         pd.entries[lfb_pd_idx] = (LFB_TABLE_PHYS as u32) | PAGE_PRESENT | PAGE_WRITABLE;
         TOTAL_MAPPED_PAGES += ENTRIES_PER_TABLE;
+        LFB_PD_INDEX = lfb_pd_idx;
 
         // Clear remaining directory entries (unmapped / not present)
         for t in NUM_IDENTITY_TABLES..ENTRIES_PER_TABLE {
@@ -185,6 +200,7 @@ pub fn init() {
 
         // 3. Load CR3 with Page Directory physical address
         load_cr3(PAGE_DIR_PHYS);
+        ACTIVE_PD = PAGE_DIR_PHYS;
         crate::logln!(
             "[VMM] Page Directory loaded into CR3 at 0x{:08X}",
             PAGE_DIR_PHYS
@@ -211,11 +227,21 @@ pub fn init() {
 
 /// Map a 4KB virtual address to a physical address with specified flags.
 pub fn map_page(virt_addr: usize, phys_addr: usize, flags: u32) -> Result<(), &'static str> {
+    map_page_in(unsafe { ACTIVE_PD }, virt_addr, phys_addr, flags)
+}
+
+/// Map a 4KB virtual address in an arbitrary page directory.
+pub fn map_page_in(
+    pd_phys: usize,
+    virt_addr: usize,
+    phys_addr: usize,
+    flags: u32,
+) -> Result<(), &'static str> {
     unsafe {
         let pd_idx = (virt_addr >> 22) & 0x3FF;
         let pt_idx = (virt_addr >> 12) & 0x3FF;
 
-        let pd = get_page_directory();
+        let pd = directory_at(pd_phys);
         let pde = pd.entries[pd_idx];
         let pt_phys = if (pde & PAGE_PRESENT) == 0 {
             // Allocate a new frame from PMM for the Page Table
@@ -247,7 +273,9 @@ pub fn map_page(virt_addr: usize, phys_addr: usize, flags: u32) -> Result<(), &'
             TOTAL_MAPPED_PAGES += 1;
         }
 
-        invalidate_tlb(virt_addr);
+        if pd_phys == ACTIVE_PD {
+            invalidate_tlb(virt_addr);
+        }
         Ok(())
     }
 }
@@ -281,12 +309,17 @@ pub fn unmap_page(virt_addr: usize) -> Result<(), &'static str> {
 
 /// Translate a virtual address to physical address, if mapped.
 pub fn get_phys_addr(virt_addr: usize) -> Option<usize> {
+    get_phys_addr_in(unsafe { ACTIVE_PD }, virt_addr)
+}
+
+/// Translate a virtual address through an arbitrary page directory.
+pub fn get_phys_addr_in(pd_phys: usize, virt_addr: usize) -> Option<usize> {
     unsafe {
         let pd_idx = (virt_addr >> 22) & 0x3FF;
         let pt_idx = (virt_addr >> 12) & 0x3FF;
         let offset = virt_addr & (PAGE_SIZE - 1);
 
-        let pd = get_page_directory();
+        let pd = directory_at(pd_phys);
         let pde = pd.entries[pd_idx];
         if (pde & PAGE_PRESENT) == 0 {
             return None;
@@ -307,6 +340,108 @@ pub fn get_phys_addr(virt_addr: usize) -> Option<usize> {
 
 pub fn is_paging_enabled() -> bool {
     unsafe { PAGING_ENABLED }
+}
+
+pub fn active_directory() -> usize {
+    unsafe { ACTIVE_PD }
+}
+
+/// Load a page directory into CR3 (no-op when already active).
+pub fn switch_directory(pd_phys: usize) {
+    unsafe {
+        if pd_phys == ACTIVE_PD {
+            return;
+        }
+        load_cr3(pd_phys);
+        ACTIVE_PD = pd_phys;
+    }
+}
+
+/// A fresh page directory holding only the kernel's mappings.
+pub fn clone_kernel_directory() -> Option<usize> {
+    let frame = crate::pmm::alloc_frame()?;
+    unsafe {
+        let src = get_page_directory();
+        let dst = directory_at(frame);
+        dst.entries = src.entries;
+        let lfb_idx = LFB_PD_INDEX;
+        for i in USER_PD_START..DEMAND_PD_INDEX {
+            if i != lfb_idx {
+                dst.entries[i] = 0;
+            }
+        }
+    }
+    Some(frame)
+}
+
+/// Full copy of a directory: kernel mappings shared, user pages duplicated.
+pub fn clone_directory_full(src_pd: usize) -> Option<usize> {
+    let frame = crate::pmm::alloc_frame()?;
+    unsafe {
+        let src = directory_at(src_pd);
+        let dst = directory_at(frame);
+        let lfb_idx = LFB_PD_INDEX;
+        for i in 0..ENTRIES_PER_TABLE {
+            let pde = src.entries[i];
+            let kernel_entry = i < USER_PD_START || i >= DEMAND_PD_INDEX || i == lfb_idx;
+            if kernel_entry || (pde & PAGE_PRESENT) == 0 {
+                dst.entries[i] = pde;
+                continue;
+            }
+
+            let new_table = match crate::pmm::alloc_frame() {
+                Some(f) => f,
+                None => return None,
+            };
+            core::ptr::write_bytes(new_table as *mut u8, 0, PAGE_SIZE);
+            let src_table = &*((pde & PAGE_FRAME_MASK) as usize as *const PageTable);
+            let new_pt = directory_at(new_table);
+            for j in 0..ENTRIES_PER_TABLE {
+                let pte = src_table.entries[j];
+                if (pte & PAGE_PRESENT) == 0 {
+                    continue;
+                }
+                let data_frame = match crate::pmm::alloc_frame() {
+                    Some(f) => f,
+                    None => return None,
+                };
+                core::ptr::copy_nonoverlapping(
+                    (pte & PAGE_FRAME_MASK) as usize as *const u8,
+                    data_frame as *mut u8,
+                    PAGE_SIZE,
+                );
+                new_pt.entries[j] = (data_frame as u32) | (pte & 0xFFF);
+            }
+            dst.entries[i] = (new_table as u32) | (pde & 0xFFF);
+        }
+    }
+    Some(frame)
+}
+
+/// Release every user page table and data frame of an address space.
+/// The page directory frame itself is left to the caller.
+pub fn free_user_space(pd_phys: usize) {
+    unsafe {
+        let pd = directory_at(pd_phys);
+        let lfb_idx = LFB_PD_INDEX;
+        for i in USER_PD_START..DEMAND_PD_INDEX {
+            if i == lfb_idx {
+                continue;
+            }
+            let pde = pd.entries[i];
+            if (pde & PAGE_PRESENT) == 0 {
+                continue;
+            }
+            let table = &*((pde & PAGE_FRAME_MASK) as usize as *const PageTable);
+            for pte in table.entries.iter() {
+                if (pte & PAGE_PRESENT) != 0 {
+                    crate::pmm::free_frame((pte & PAGE_FRAME_MASK) as usize);
+                }
+            }
+            crate::pmm::free_frame((pde & PAGE_FRAME_MASK) as usize);
+            pd.entries[i] = 0;
+        }
+    }
 }
 
 pub fn total_mapped_pages() -> usize {
