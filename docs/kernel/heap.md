@@ -4,68 +4,41 @@ The Nyxara Kernel Heap (`rust/src/heap.rs`) implements the standard Rust `core::
 
 ## Architecture
 
-The allocator uses an intrusive linked-list first-fit algorithm with block splitting on allocation and adjacent block coalescing on deallocation.
+The allocator is an intrusive first-fit free list: every block stays in the list for its whole life and is marked allocated or free. Allocation splits the first fitting free block; deallocation merges address-adjacent free blocks. `alloc`/`dealloc` run with interrupts disabled (`pushfd`/`cli`, flags restored on exit) so timer or keyboard IRQs cannot re-enter the allocator mid-mutation.
 
-### Block Header Structure
-Every allocated or free memory chunk is prefixed by an intrusive header:
+### Block Layout
 
 ```rust
 struct BlockHeader {
-    size: usize,             // Size of usable payload (excluding header)
-    free: bool,              // Allocation status (true = free, false = in-use)
-    next: *mut BlockHeader,  // Pointer to next block in heap pool
+    size: usize,             // Usable payload bytes (excluding header)
+    free: u32,               // 1 = free, 0 = in-use
+    next: *mut BlockHeader,  // Next block in the address-ordered list
+    magic: u32,              // 0x4E595241 ("NYRA"), detects header corruption
 }
 ```
+
+Blocks are 16-byte aligned and the payload always starts at `block + 16`, so every live pointer is 16-aligned and its header sits exactly at `ptr - 16`. `dealloc` therefore computes the header directly and validates the magic before freeing; a pointer whose header was overwritten is logged and leaked instead of being guessed back into the pool. Layouts with alignment above 16 are not supported.
+
+A failing `alloc` walks the list and logs block/free counts, free bytes, and the largest free block over serial (`[Heap] alloc(N) failed: ...`) before returning null.
 
 ## Heap Initialization
 
 During boot in `nyxara_rust_main()`:
 1. `heap_start` is calculated from the linker symbol `kernel_end`, aligned to the next 4 KB boundary.
-2. A 4 MB memory region is reserved in the PMM (`0x400000` bytes).
-3. The allocator is initialized:
-   ```rust
-   let heap_size = 4 * 1024 * 1024; // 4 MB
-   let heap_start = (k_end + 4095) & !4095;
-   unsafe {
-       ALLOCATOR.init(heap_start, heap_size);
-   }
-   ```
-4. A single large `BlockHeader` spanning the available 4 MB space is placed at `heap_start`.
+2. A 4 MB memory region is reserved in the PMM.
+3. `heap::init(heap_start, heap_size)` initializes the single free block spanning the region.
+4. The `#[global_allocator]` static lives in `heap.rs` itself.
 
-## Allocation Algorithm (`alloc`)
+## Observability
 
-When `alloc(layout: Layout)` is invoked:
-1. Computes the required byte size, rounded up to an 8-byte boundary.
-2. Traverses the linked list from `head` looking for the first `free == true` block with sufficient capacity:
-   ```rust
-   let total_needed = adjustment + needed_size;
-   if header.size >= total_needed {
-       // Check if block can be split
-       let remaining = header.size - total_needed;
-       if remaining >= core::mem::size_of::<BlockHeader>() + 16 {
-           // Split block into allocated front and new free block
-           let next_block = (data_ptr as usize + needed_size) as *mut BlockHeader;
-           (*next_block).size = remaining - core::mem::size_of::<BlockHeader>();
-           (*next_block).free = true;
-           (*next_block).next = header.next;
-           header.next = next_block;
-           header.size = total_needed;
-       }
-       header.free = false;
-       return data_ptr;
-   }
-   ```
-3. If no block satisfies the request, returns `ptr::null_mut()`.
+`free` reports kernel-heap usage alongside PMM statistics:
 
-## Deallocation & Coalescing (`dealloc`)
+```
+Kernel Heap:
+  Used  : 10 KB / 4096 KB (peak 27 KB)
+```
 
-When memory is released:
-1. Finds the `BlockHeader` immediately preceding the pointer:
-   ```rust
-   let header = (ptr as usize - core::mem::size_of::<BlockHeader>()) as *mut BlockHeader;
-   (*header).free = true;
-   ```
-2. **Coalescing**: Iterates through the list and merges adjacent contiguous free blocks into a single larger block, preventing external memory fragmentation.
+`heap::heap_used()`, `heap::heap_peak()`, and `heap::heap_capacity()` expose the counters.
 
 ## Integration with Rust Collections
 

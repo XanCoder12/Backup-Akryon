@@ -10,9 +10,9 @@ The PIT runs at 100 Hz. On each timer interrupt, `nyxara_scheduler_tick()` updat
 
 1. `vmm::switch_directory(pd)` loads the next task's CR3 (skipped when unchanged).
 2. `tss_set_stack(0x10, stack_top)` points `TSS.esp0` at the next task's kernel stack — kernel tasks get the boot stack top `0x00140000`.
-3. `irq_set_switch_frame(frame, stack_top)` hands the frame to the IRQ stub in `boot/kernel_entry.asm`, which restores the general registers and `iret`s through a return frame rebuilt at the task's kernel stack top (or straight through the saved frame for boot-stack tasks).
+3. `irq_set_switch_frame(frame, stack_top)` hands the frame to the IRQ stub in `boot/kernel_entry.asm`, which restores the general registers and `iret`s through the saved frame. Walking the frame recovers ESP automatically for Ring 0 frames, and a Ring 3 frame's iret consumes the user `SS:ESP` pair, so the copy-based resume path is unnecessary and disabled (`irq_switch_stack` stays 0).
 
-`sleep(ticks)` blocks a task until a later tick; `waitpid` blocks with `wake_at = u64::MAX` so only the exiting child can wake the waiter.
+`sleep(ticks)` blocks a task until a later tick; `waitpid` blocks with `wake_at = u64::MAX` so only the exiting child can wake the waiter. Each task's `stack_top` is permanent (never zeroed by the tick), which keeps `TSS.esp0` pointing at the owning task's kernel stack across every switch.
 
 ## Kernel Stacks & TSS
 
@@ -25,7 +25,7 @@ The GDT provides kernel selectors `0x08`/`0x10`, user selectors `0x1B`/`0x23` (t
 Two paths resume tasks from Ring 0:
 
 - The **timer path** (`irq_common_stub` + `irq_set_switch_frame`) for preemption, as above.
-- **`task_resume_asm(frame, stack_top, cr3)`** for syscall contexts that must never return to the caller — currently process exit. It loads CR3, restores the saved registers, and `iret`s either through a rebuilt frame at the task's kernel stack top or through the saved frame itself when `stack_top == 0`. The final stack pointer is kept in the `resume_esp` variable because `popa` clobbers every general register.
+- **`task_resume_asm(frame, cr3)`** for syscall contexts that must never return to the caller — currently process exit. It loads CR3, restores the saved registers, and `iret`s through the saved frame.
 
 ## Task Life Cycle
 

@@ -43,7 +43,7 @@ At boot, `initrd::init()` copies each embedded program image into the RamFS as `
 - **`exit` (`EAX=1`, Ring 3 only)** — releases the address space and marks the task `Zombie`. If the parent is blocked in `waitpid`, it is woken immediately and the exiting task is reaped at once; otherwise it stays `Zombie` until reaped. Orphaned children are re-parented to pid 0.
 - **`waitpid` (`EAX=7`, Ring 3 only)** — reaps an already-exited child, or blocks (`wake_at = u64::MAX`) until one exits; the exit code is written through the parent's page tables by translating the user status pointer to a physical address.
 
-Exiting a task from syscall context cannot return through `iret`, so `exit_current()` picks the next ready task and calls `task_resume_asm(frame, stack_top, cr3)` in `boot/kernel_entry.asm`, which loads CR3, restores the general registers from the saved frame, rebuilds the iret frame at the task's kernel stack top, and never returns.
+Exiting a task from syscall context cannot return through `iret`, so `exit_current()` picks the next ready task and calls `task_resume_asm(frame, cr3)` in `boot/kernel_entry.asm`, which loads CR3, restores the general registers, and `iret`s through the saved frame — never returning.
 
 ## Shell Integration
 
