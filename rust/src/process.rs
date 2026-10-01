@@ -78,7 +78,7 @@ static mut INITIALIZED: bool = false;
 extern "C" {
     fn irq_set_switch_frame(regs: *mut Registers, stack_top: u32);
     fn tss_set_stack(ss0: u32, esp0: u32);
-    fn task_resume_asm(frame: *const Registers, stack_top: u32, cr3: u32);
+    fn task_resume_asm(frame: *const Registers, cr3: u32);
     fn hlt();
     fn sti();
     static user_demo_start: u8;
@@ -489,8 +489,7 @@ pub fn exit_current(code: i32) -> ! {
             },
         );
         let frame = TASKS[next].frame;
-        let stack_top = TASKS[next].stack_top;
-        task_resume_asm(frame, stack_top, next_pd as u32);
+        task_resume_asm(frame, next_pd as u32);
     }
     unreachable!("task_resume_asm must not return")
 }
@@ -616,7 +615,6 @@ pub extern "C" fn nyxara_scheduler_tick(regs: *mut Registers) {
 
         TICKS += 1;
         TASKS[CURRENT].frame = regs;
-        TASKS[CURRENT].stack_top = 0;
         TASKS[CURRENT].ticks += 1;
 
         for task in TASKS.iter_mut() {
