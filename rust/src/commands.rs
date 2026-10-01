@@ -500,6 +500,14 @@ fn cmd_free() {
     println!("  Used  : {} KB ({} MB)", used, used / 1024);
     println!("  Free  : {} KB ({} MB)", free, free / 1024);
 
+    print_colored!(Color::LightCyan, Color::Black, "Kernel Heap:\n");
+    println!(
+        "  Used  : {} KB / {} KB (peak {} KB)",
+        crate::heap::heap_used() / 1024,
+        crate::heap::heap_capacity() / 1024,
+        crate::heap::heap_peak() / 1024
+    );
+
     print_colored!(Color::LightCyan, Color::Black, "Virtual Memory (VMM):\n");
     let paging_active = crate::vmm::is_paging_enabled();
     println!("  Paging       : {}", if paging_active { "Active (32-bit Protected Mode, CR0.PG=1, CR0.WP=1)" } else { "Inactive" });
