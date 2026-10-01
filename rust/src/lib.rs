@@ -26,9 +26,6 @@ pub mod vmm;
 use core::panic::PanicInfo;
 use vga::Color;
 
-#[global_allocator]
-static ALLOCATOR: heap::KernelAllocator = heap::KernelAllocator::empty();
-
 extern "C" {
     static kernel_start: u8;
     static kernel_end: u8;
@@ -89,9 +86,7 @@ pub extern "C" fn nyxara_rust_main() -> ! {
         pmm::reserve_frame(page * pmm::PAGE_SIZE);
     }
 
-    unsafe {
-        ALLOCATOR.init(heap_start, heap_size);
-    }
+    heap::init(heap_start, heap_size);
 
     vmm::init();
     framebuffer::init();
