@@ -442,7 +442,7 @@ fn complete_input(
             "syscall", "echo", "color", "calc", "ifconfig", "netinfo", "dhcp", "dns", "nslookup",
             "ping", "arp", "netstat", "curl", "fetch", "httpd", "nc", "date", "time", "mway",
             "vmm", "panic", "reboot", "lalaufetch", "mouse", "paint", "uname", "whoami",
-            "hostname", "motd", "sudo",
+            "hostname", "motd", "sudo", "run", "hello",
         ] {
             if name.as_bytes().starts_with(prefix) && name.len() > prefix.len() {
                 candidates.push(String::from(name));
