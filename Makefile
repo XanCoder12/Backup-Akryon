@@ -133,6 +133,9 @@ $(BUILD_DIR)/kmain.o: $(KERN_DIR)/kmain.c $(HAL_DIR)/hal.h | $(BUILD_DIR)
 	$(CC) $(C_FLAGS) $< -o $@
 
 # 5. Build Userland ELF Programs
+$(BUILD_DIR)/hello.elf: ../NyxC/hello.nyx ../NyxC/Cargo.toml | $(BUILD_DIR)
+	cargo run --manifest-path ../NyxC/Cargo.toml -- build $< -o $@
+
 $(BUILD_DIR)/%.elf: $(USER_DIR)/%.asm $(USER_DIR)/user.ld | $(BUILD_DIR)
 	$(ASM) -f elf32 $< -o $(BUILD_DIR)/$*.o
 	$(LD) -m elf_i386 -T $(USER_DIR)/user.ld -nostdlib -o $@ $(BUILD_DIR)/$*.o
