@@ -26,13 +26,13 @@ Switching to a different address space is `vmm::switch_directory(pd)`, which rel
 - `p_memsz > p_filesz` (BSS) is covered because frames start zeroed.
 - Overlapping segments and images outside the user range are rejected with `-ENOEXEC`.
 
-Build-time: userland programs live in `userland/*.asm` (NASM, freestanding), are linked at `0x04000000` by `userland/user.ld`, and the resulting ELF files are embedded into the kernel with `include_bytes!`.
+Build-time: userland programs live in `userland/*.asm` (or written in NyxC like `../NyxC/hello.nyx`), linked at `0x04000000` by `user.ld`, and the resulting ELF files are embedded into the kernel with `include_bytes!`.
 
 ## Initrd: `/bin` Registration (`rust/src/initrd.rs`)
 
 At boot, `initrd::init()` copies each embedded program image into the RamFS as `/bin/<name>`. `execve` therefore resolves binaries through the normal VFS path, and `ls /bin` lists the available programs. Current programs:
 
-- `hello` — prints a greeting via `write(1, ...)` and exits 0.
+- `hello` — compiled from `NyxC/hello.nyx` via the NyxC compiler, prints `"Hello from NyxC on NyxaraOS!\n"` via `sys::write(1, ...)` and exits 0.
 - `forktest` — `fork()`s; the child prints its pid and exits 42, the parent `waitpid()`s, prints the exit code, and exits 0.
 
 ## Process Life Cycle (`rust/src/process.rs`)
@@ -47,7 +47,7 @@ Exiting a task from syscall context cannot return through `iret`, so `exit_curre
 
 ## Shell Integration
 
-`run <program>` looks the binary up in `/bin` (or takes an absolute VFS path), spawns it, and blocks the shell in `wait_kernel(pid)` — a polling reap loop that yields between checks — then reports the exit code. Repeated runs reuse the freed task slot and allocated frames, so the loop is leak-free.
+Typing the program name directly (e.g. `hello`) or using `run <program>` looks the binary up in `/bin` (or takes an absolute VFS path), spawns it, and blocks the shell in `wait_kernel(pid)` — a polling reap loop that yields between checks. Repeated runs reuse the freed task slot and allocated frames, so the loop is leak-free.
 
 ## Verification
 

@@ -520,6 +520,40 @@ Membuka canvas gambar sederhana menggunakan mouse.
 - Gunakan tombol dan shortcut yang ditampilkan di canvas untuk memilih warna atau membersihkan layar.
 - Tekan `q` atau `Esc` untuk keluar.
 
+## Eksekusi Program Userland
+
+### `hello`
+
+```text
+hello
+```
+
+Mengeksekusi program native `/bin/hello` yang dikompilasi dari bahasa pemrograman NyxC (`NyxC/hello.nyx`). Program berjalan di Ring 3 (userland) dengan virtual address `0x04000000` dan mencetak string output langsung ke console.
+
+Contoh:
+
+```text
+nyxara / > hello
+Hello from NyxC on NyxaraOS!
+```
+
+### `run`
+
+```text
+run <program>
+```
+
+Mengeksekusi file binary ELF userland dari direktori `/bin/` dengan verbose status PID dan exit code.
+
+Contoh:
+
+```text
+nyxara / > run hello
+Started 'hello' (pid 1), waiting for exit...
+Hello from NyxC on NyxaraOS!
+'hello' finished with exit code 0.
+```
+
 ## Shortcut line editor shell
 
 | Shortcut | Fungsi |
