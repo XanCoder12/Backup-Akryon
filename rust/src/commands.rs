@@ -112,9 +112,17 @@ pub fn handle_command(cmd: &str) {
         "exit" | "quit" => {
             println!("Nyxara shell is the root kernel process and cannot exit. Type 'reboot' to restart.");
         }
+        "hello" => {
+            let _ = run_elf_binary("hello", false);
+        }
         _ => {
-            print_colored!(Color::LightRed, Color::Black, "Error: ");
-            println!("Unknown command '{}'. Type 'help' for available commands.", command);
+            let bin_path = format!("/bin/{}", command);
+            if crate::vfs::read_file(&bin_path).is_some() {
+                let _ = run_elf_binary(command, false);
+            } else {
+                print_colored!(Color::LightRed, Color::Black, "Error: ");
+                println!("Unknown command '{}'. Type 'help' for available commands.", command);
+            }
         }
     }
 }
@@ -130,6 +138,7 @@ fn cmd_help() {
     println!("  ps                - Display kernel tasks");
     println!("  yield             - Voluntarily yield the CPU");
     println!("  run <program>     - Execute a userland ELF program from /bin");
+    println!("  hello             - Execute NyxC hello world program");
     println!("  sleep <ticks>     - Block the current task");
     println!("  pwd               - Display current directory");
     println!("  cd <dir>          - Change current directory");
@@ -178,36 +187,46 @@ fn print_pad_right(s: &str, width: usize) {
     }
 }
 
-fn cmd_run(args: &str) {
-    let name = args.trim();
-    if name.is_empty() {
-        println!("Usage: run <program>  (programs live in /bin)");
-        return;
-    }
+fn run_elf_binary(name: &str, verbose: bool) -> bool {
     let path = if name.contains('/') {
         format!("{}", name)
     } else {
         format!("/bin/{}", name)
     };
     let Some(image) = crate::vfs::read_file(&path) else {
-        print_colored!(Color::LightRed, Color::Black, "Error: ");
-        println!("'{}' not found.", path);
-        return;
+        if verbose {
+            print_colored!(Color::LightRed, Color::Black, "Error: ");
+            println!("'{}' not found.", path);
+        }
+        return false;
     };
 
     match crate::process::spawn_elf(&image, name) {
         Ok(pid) => {
-            println!("Started '{}' (pid {}), waiting for exit...", name, pid);
+            if verbose {
+                println!("Started '{}' (pid {}), waiting for exit...", name, pid);
+            }
             let code = crate::process::wait_kernel(pid);
-            if code >= 0 {
+            if verbose && code >= 0 {
                 println!("'{}' finished with exit code {}.", name, code);
             }
+            true
         }
         Err(err) => {
             print_colored!(Color::LightRed, Color::Black, "Error: ");
             println!("failed to start '{}' (errno {}).", name, -err);
+            false
         }
     }
+}
+
+fn cmd_run(args: &str) {
+    let name = args.trim();
+    if name.is_empty() {
+        println!("Usage: run <program>  (programs live in /bin)");
+        return;
+    }
+    let _ = run_elf_binary(name, true);
 }
 
 fn cmd_sleep(args: &str) {
